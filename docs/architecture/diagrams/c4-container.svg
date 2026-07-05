@@ -1,65 +1,336 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="1050" viewBox="0 0 1600 1050" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="2200" height="1500" viewBox="0 0 2200 1500" role="img" aria-labelledby="title desc">
   <title id="title">C4 Container — Conversational AI Platform</title>
-  <desc id="desc">C4 container diagram for a conversational AI platform for debt renegotiation.</desc>
+  <desc id="desc">C4 Container diagram for a conversational AI platform used for banking debt renegotiation through WhatsApp, with governed agents, RAG, MCP tools, auditability, handoff, and corporate integrations.</desc>
+
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333"/>
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#666"/>
     </marker>
+
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.12"/>
+    </filter>
+
     <style>
-      .title{font:700 28px Arial,sans-serif;fill:#111}.sub{font:400 14px Arial,sans-serif;fill:#555}
-      .t{font:700 15px Arial,sans-serif;fill:#111}.d{font:400 12px Arial,sans-serif;fill:#333}.tech{font:600 12px Arial,sans-serif;fill:#333}.l{font:400 11px Arial,sans-serif;fill:#333}
-      .actor{fill:#eef4ff;stroke:#4b6ea9;stroke-width:1.4;rx:10}.ext{fill:#f7f7f7;stroke:#666;stroke-width:1.4;rx:10}
-      .svc{fill:#eef9f1;stroke:#3b7a45;stroke-width:1.4;rx:10}.cont{fill:#eaf4ff;stroke:#2d5f8b;stroke-width:1.4;rx:10}
-      .db{fill:#fff7e6;stroke:#9b6b00;stroke-width:1.4;rx:10}.q{fill:#f4edff;stroke:#6f42c1;stroke-width:1.4;rx:10}
-      .b{fill:none;stroke:#999;stroke-width:2;stroke-dasharray:8 6;rx:16}.a{stroke:#333;stroke-width:1.7;fill:none;marker-end:url(#arrow)}.ad{stroke:#555;stroke-width:1.5;fill:none;stroke-dasharray:6 5;marker-end:url(#arrow)}
+      .page-title{font:700 24px Arial, Helvetica, sans-serif;fill:#111}
+      .system-title{font:700 18px Arial, Helvetica, sans-serif;fill:#333}
+      .system-type{font:700 13px Arial, Helvetica, sans-serif;fill:#333}
+      .name{font:700 17px Arial, Helvetica, sans-serif;fill:#fff}
+      .stereo{font:italic 12px Arial, Helvetica, sans-serif;fill:#eaf3ff}
+      .tech{font:700 13px Arial, Helvetica, sans-serif;fill:#eaf3ff}
+      .desc{font:400 13px Arial, Helvetica, sans-serif;fill:#fff}
+      .external-name{font:700 16px Arial, Helvetica, sans-serif;fill:#fff}
+      .external-desc{font:400 13px Arial, Helvetica, sans-serif;fill:#fff}
+      .external-stereo{font:italic 12px Arial, Helvetica, sans-serif;fill:#eee}
+      .rel{font:700 11px Arial, Helvetica, sans-serif;fill:#555}
+      .protocol{font:italic 10px Arial, Helvetica, sans-serif;fill:#777}
+      .note{font:400 12px Arial, Helvetica, sans-serif;fill:#333}
+      .person{fill:#08427b;stroke:#052e56;stroke-width:2;filter:url(#shadow)}
+      .container{fill:#438dd5;stroke:#2e6295;stroke-width:2;filter:url(#shadow)}
+      .database{fill:#438dd5;stroke:#2e6295;stroke-width:2;filter:url(#shadow)}
+      .external{fill:#999;stroke:#707070;stroke-width:2;filter:url(#shadow)}
+      .boundary{fill:none;stroke:#777;stroke-width:2;stroke-dasharray:8 8}
+      .arrow{stroke:#666;stroke-width:1.6;fill:none;marker-end:url(#arrow)}
+      .arrow-soft{stroke:#888;stroke-width:1.4;fill:none;marker-end:url(#arrow)}
+      .arrow-event{stroke:#666;stroke-width:1.5;fill:none;stroke-dasharray:6 5;marker-end:url(#arrow)}
+      .icon{fill:#fff}
     </style>
   </defs>
 
-  <rect width="1600" height="1050" fill="#fff"/>
-  <text x="50" y="50" class="title">C4 Container — Conversational AI Platform</text>
-  <text x="50" y="75" class="sub">Renegociação bancária via WhatsApp com agentes, RAG, MCP, auditoria e integrações corporativas governadas.</text>
+  <rect width="2200" height="1500" fill="#fff"/>
+  <text x="1100" y="38" text-anchor="middle" class="page-title">C4 Container — Conversational AI Platform</text>
 
-  <rect x="50" y="130" width="190" height="70" class="actor"/><text x="145" y="158" text-anchor="middle" class="t">Cliente</text><text x="145" y="180" text-anchor="middle" class="d">Interage via WhatsApp</text>
-  <rect x="310" y="130" width="210" height="70" class="ext"/><text x="415" y="158" text-anchor="middle" class="t">WhatsApp BSP</text><text x="415" y="180" text-anchor="middle" class="d">Mensageria WhatsApp</text>
+  <!-- System boundary -->
+  <rect x="430" y="70" width="1210" height="1360" class="boundary"/>
+  <text x="1035" y="105" text-anchor="middle" class="system-title">Plataforma de IA Conversacional</text>
+  <text x="1035" y="125" text-anchor="middle" class="system-type">[Software System]</text>
 
-  <rect x="610" y="110" width="590" height="875" class="b"/><text x="635" y="140" class="t">Plataforma de IA Conversacional</text>
+  <!-- People -->
+  <g transform="translate(40,310)">
+    <rect width="210" height="150" class="person"/>
+    <circle cx="105" cy="35" r="16" class="icon"/>
+    <path d="M73 78 C78 52,132 52,137 78 Z" class="icon"/>
+    <text x="105" y="96" text-anchor="middle" class="stereo">&lt;&lt;person&gt;&gt;</text>
+    <text x="105" y="120" text-anchor="middle" class="name">Cliente</text>
+    <text x="105" y="142" text-anchor="middle" class="desc">Interage via WhatsApp</text>
+  </g>
 
-  <rect x="760" y="175" width="280" height="68" class="cont"/><text x="900" y="200" text-anchor="middle" class="t">Security Gateway</text><text x="900" y="220" text-anchor="middle" class="tech">API Gateway / WAF</text><text x="900" y="237" text-anchor="middle" class="d">Origem, rate limit e autenticação técnica</text>
-  <rect x="760" y="280" width="280" height="68" class="cont"/><text x="900" y="305" text-anchor="middle" class="t">Channel BFF</text><text x="900" y="325" text-anchor="middle" class="tech">.NET</text><text x="900" y="342" text-anchor="middle" class="d">Normaliza mensagens do canal</text>
-  <rect x="760" y="385" width="280" height="68" class="svc"/><text x="900" y="410" text-anchor="middle" class="t">Conversation Orchestrator</text><text x="900" y="430" text-anchor="middle" class="tech">Python / FastAPI</text><text x="900" y="447" text-anchor="middle" class="d">Sessão, estado, intenção e jornada</text>
-  <rect x="760" y="490" width="280" height="68" class="svc"/><text x="900" y="515" text-anchor="middle" class="t">Agent Runtime</text><text x="900" y="535" text-anchor="middle" class="tech">Python / Strands Agents</text><text x="900" y="552" text-anchor="middle" class="d">Raciocínio, planejamento e tool calling</text>
+  <g transform="translate(1740,135)">
+    <rect width="210" height="150" class="person"/>
+    <circle cx="105" cy="35" r="16" class="icon"/>
+    <path d="M73 78 C78 52,132 52,137 78 Z" class="icon"/>
+    <text x="105" y="96" text-anchor="middle" class="stereo">&lt;&lt;person&gt;&gt;</text>
+    <text x="105" y="120" text-anchor="middle" class="name">Atendente Humano</text>
+    <text x="105" y="142" text-anchor="middle" class="desc">Assume conversas transferidas</text>
+  </g>
 
-  <rect x="640" y="630" width="240" height="68" class="svc"/><text x="760" y="655" text-anchor="middle" class="t">Knowledge Service</text><text x="760" y="675" text-anchor="middle" class="tech">Python / FastAPI</text><text x="760" y="692" text-anchor="middle" class="d">RAG, FAQ e contexto</text>
-  <rect x="930" y="630" width="240" height="68" class="svc"/><text x="1050" y="655" text-anchor="middle" class="t">Memory Service</text><text x="1050" y="675" text-anchor="middle" class="tech">Python / FastAPI</text><text x="1050" y="692" text-anchor="middle" class="d">Memória e histórico</text>
-  <rect x="640" y="745" width="240" height="68" class="svc"/><text x="760" y="770" text-anchor="middle" class="t">Tool Service</text><text x="760" y="790" text-anchor="middle" class="tech">Python / FastAPI / MCP</text><text x="760" y="807" text-anchor="middle" class="d">Tools governadas</text>
-  <rect x="930" y="745" width="240" height="68" class="cont"/><text x="1050" y="770" text-anchor="middle" class="t">Renegotiation Service</text><text x="1050" y="790" text-anchor="middle" class="tech">.NET</text><text x="1050" y="807" text-anchor="middle" class="d">Elegibilidade, simulação e acordo</text>
-  <rect x="640" y="860" width="240" height="68" class="cont"/><text x="760" y="885" text-anchor="middle" class="t">Audit Service</text><text x="760" y="905" text-anchor="middle" class="tech">.NET</text><text x="760" y="922" text-anchor="middle" class="d">Prompts, decisões e tools</text>
-  <rect x="930" y="860" width="240" height="68" class="cont"/><text x="1050" y="885" text-anchor="middle" class="t">Handoff Service</text><text x="1050" y="905" text-anchor="middle" class="tech">.NET</text><text x="1050" y="922" text-anchor="middle" class="d">Transferência com resumo</text>
+  <!-- External systems -->
+  <g transform="translate(280,560)">
+    <rect width="230" height="95" class="external"/>
+    <text x="115" y="24" text-anchor="middle" class="external-stereo">&lt;&lt;external system&gt;&gt;</text>
+    <text x="115" y="50" text-anchor="middle" class="external-name">WhatsApp BSP</text>
+    <text x="115" y="73" text-anchor="middle" class="external-desc">Recebe e envia mensagens</text>
+  </g>
 
-  <rect x="1265" y="145" width="240" height="70" class="ext"/><text x="1385" y="173" text-anchor="middle" class="t">Amazon Bedrock</text><text x="1385" y="195" text-anchor="middle" class="d">Modelos fundacionais</text>
-  <rect x="1265" y="270" width="240" height="70" class="ext"/><text x="1385" y="298" text-anchor="middle" class="t">OpenSearch</text><text x="1385" y="320" text-anchor="middle" class="d">Busca vetorial</text>
-  <rect x="1265" y="520" width="240" height="70" class="ext"/><text x="1385" y="548" text-anchor="middle" class="t">Core Bancário</text><text x="1385" y="570" text-anchor="middle" class="d">Débitos, ofertas e acordos</text>
-  <rect x="1265" y="650" width="240" height="70" class="ext"/><text x="1385" y="678" text-anchor="middle" class="t">Plataforma de Atendimento</text><text x="1385" y="700" text-anchor="middle" class="d">Handoff humano</text>
-  <rect x="1265" y="780" width="240" height="70" class="ext"/><text x="1385" y="808" text-anchor="middle" class="t">Data Lake Corporativo</text><text x="1385" y="830" text-anchor="middle" class="d">Analytics e auditoria</text>
+  <g transform="translate(1720,855)">
+    <rect width="230" height="105" class="external"/>
+    <text x="115" y="26" text-anchor="middle" class="external-stereo">&lt;&lt;external system&gt;&gt;</text>
+    <text x="115" y="55" text-anchor="middle" class="external-name">Amazon Bedrock</text>
+    <text x="115" y="80" text-anchor="middle" class="external-desc">Modelos fundacionais</text>
+  </g>
 
-  <rect x="130" y="710" width="220" height="62" class="db"/><text x="240" y="738" text-anchor="middle" class="t">Redis</text><text x="240" y="758" text-anchor="middle" class="d">Sessões e rate limit</text>
-  <rect x="130" y="805" width="220" height="62" class="db"/><text x="240" y="833" text-anchor="middle" class="t">MongoDB</text><text x="240" y="853" text-anchor="middle" class="d">Mensagens e memória</text>
-  <rect x="130" y="900" width="220" height="62" class="db"/><text x="240" y="928" text-anchor="middle" class="t">PostgreSQL</text><text x="240" y="948" text-anchor="middle" class="d">Auditoria e acordos</text>
-  <rect x="480" y="970" width="790" height="55" class="q"/><text x="875" y="995" text-anchor="middle" class="t">Kafka</text><text x="875" y="1015" text-anchor="middle" class="d">message.received | intent.detected | tool.executed | offer.accepted | renegotiation.confirmed</text>
+  <g transform="translate(1720,1120)">
+    <rect width="230" height="105" class="external"/>
+    <text x="115" y="26" text-anchor="middle" class="external-stereo">&lt;&lt;external system&gt;&gt;</text>
+    <text x="115" y="55" text-anchor="middle" class="external-name">OpenSearch</text>
+    <text x="115" y="80" text-anchor="middle" class="external-desc">Busca vetorial e semântica</text>
+  </g>
 
-  <path class="a" d="M240 165 L310 165"/><text x="275" y="151" text-anchor="middle" class="l">WhatsApp</text>
-  <path class="a" d="M520 165 L760 209"/><text x="635" y="176" text-anchor="middle" class="l">Webhook HTTPS</text>
-  <path class="a" d="M900 243 L900 280"/><path class="a" d="M900 348 L900 385"/><path class="a" d="M900 453 L900 490"/>
-  <path class="a" d="M1040 524 L1265 180"/><text x="1165" y="330" text-anchor="middle" class="l">Invoca modelos</text>
-  <path class="a" d="M850 558 L770 630"/><path class="a" d="M950 558 L1040 630"/><path class="a" d="M850 558 L770 745"/>
-  <path class="a" d="M880 664 L1265 305"/><text x="1100" y="455" text-anchor="middle" class="l">RAG / busca semântica</text>
-  <path class="a" d="M880 779 L930 779"/><path class="a" d="M1170 779 L1265 555"/><text x="1220" y="660" text-anchor="middle" class="l">Core APIs</text>
-  <path class="a" d="M1030 453 L1050 860"/><path class="a" d="M1170 894 L1265 685"/>
-  <path class="a" d="M880 894 L1265 815"/><path class="a" d="M640 894 L350 931"/>
-  <path class="a" d="M930 665 L350 741"/><path class="a" d="M930 685 L350 836"/>
-  <path class="ad" d="M900 348 L875 970"/><path class="ad" d="M900 453 L885 970"/><path class="ad" d="M900 558 L895 970"/><path class="ad" d="M760 813 L760 970"/><path class="ad" d="M1050 813 L1050 970"/>
-  <path class="a" d="M760 314 L520 190"/><text x="635" y="285" text-anchor="middle" class="l">Resposta</text>
+  <g transform="translate(1715,1265)">
+    <rect width="250" height="105" class="external"/>
+    <text x="125" y="26" text-anchor="middle" class="external-stereo">&lt;&lt;external system&gt;&gt;</text>
+    <text x="125" y="55" text-anchor="middle" class="external-name">Core Bancário</text>
+    <text x="125" y="80" text-anchor="middle" class="external-desc">Débitos, ofertas e acordos</text>
+  </g>
 
-  <rect x="50" y="985" width="405" height="42" fill="#fff" stroke="#bbb" rx="8"/>
-  <text x="65" y="1011" class="l">Regra: Agent Runtime não acessa Core Bancário; ações passam por MCP / Tool Service.</text>
+  <g transform="translate(1740,560)">
+    <rect width="230" height="105" class="external"/>
+    <text x="115" y="26" text-anchor="middle" class="external-stereo">&lt;&lt;external system&gt;&gt;</text>
+    <text x="115" y="55" text-anchor="middle" class="external-name">Data Lake</text>
+    <text x="115" y="80" text-anchor="middle" class="external-desc">Analytics e auditoria</text>
+  </g>
+
+  <g transform="translate(1740,715)">
+    <rect width="230" height="105" class="external"/>
+    <text x="115" y="26" text-anchor="middle" class="external-stereo">&lt;&lt;external system&gt;&gt;</text>
+    <text x="115" y="55" text-anchor="middle" class="external-name">Plataforma Atendimento</text>
+    <text x="115" y="80" text-anchor="middle" class="external-desc">Operação humana</text>
+  </g>
+
+  <!-- Containers inside boundary -->
+  <g transform="translate(500,120)">
+    <rect width="200" height="105" class="container"/>
+    <text x="100" y="23" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="100" y="48" text-anchor="middle" class="name">Security Gateway</text>
+    <text x="100" y="68" text-anchor="middle" class="tech">[API Gateway / WAF]</text>
+    <text x="100" y="91" text-anchor="middle" class="desc">Origem, rate limit e autenticação</text>
+  </g>
+
+  <g transform="translate(545,345)">
+    <rect width="200" height="120" class="container"/>
+    <text x="100" y="24" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="100" y="50" text-anchor="middle" class="name">Channel BFF</text>
+    <text x="100" y="70" text-anchor="middle" class="tech">[.NET]</text>
+    <text x="100" y="94" text-anchor="middle" class="desc">Normaliza mensagens do canal</text>
+    <text x="100" y="112" text-anchor="middle" class="desc">e abstrai o WhatsApp</text>
+  </g>
+
+  <g transform="translate(980,575)">
+    <rect width="215" height="125" class="container"/>
+    <text x="107.5" y="25" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="107.5" y="52" text-anchor="middle" class="name">Conversation</text>
+    <text x="107.5" y="73" text-anchor="middle" class="name">Orchestrator</text>
+    <text x="107.5" y="94" text-anchor="middle" class="tech">[Python / FastAPI]</text>
+    <text x="107.5" y="116" text-anchor="middle" class="desc">Sessão, intenção e roteamento</text>
+  </g>
+
+  <g transform="translate(855,840)">
+    <rect width="205" height="125" class="container"/>
+    <text x="102.5" y="25" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="102.5" y="52" text-anchor="middle" class="name">Agent Runtime</text>
+    <text x="102.5" y="74" text-anchor="middle" class="tech">[Python / Strands Agents]</text>
+    <text x="102.5" y="98" text-anchor="middle" class="desc">Execução de agentes,</text>
+    <text x="102.5" y="116" text-anchor="middle" class="desc">planejamento e tool calling</text>
+  </g>
+
+  <g transform="translate(560,915)">
+    <rect width="205" height="125" class="container"/>
+    <text x="102.5" y="25" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="102.5" y="52" text-anchor="middle" class="name">Memory Service</text>
+    <text x="102.5" y="74" text-anchor="middle" class="tech">[Python / FastAPI]</text>
+    <text x="102.5" y="98" text-anchor="middle" class="desc">Memória curta, histórico</text>
+    <text x="102.5" y="116" text-anchor="middle" class="desc">e contexto conversacional</text>
+  </g>
+
+  <g transform="translate(790,1085)">
+    <rect width="205" height="125" class="container"/>
+    <text x="102.5" y="25" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="102.5" y="52" text-anchor="middle" class="name">Tool Service</text>
+    <text x="102.5" y="74" text-anchor="middle" class="tech">[Python / MCP]</text>
+    <text x="102.5" y="98" text-anchor="middle" class="desc">Expõe ferramentas MCP</text>
+    <text x="102.5" y="116" text-anchor="middle" class="desc">para ações governadas</text>
+  </g>
+
+  <g transform="translate(1040,1085)">
+    <rect width="205" height="125" class="container"/>
+    <text x="102.5" y="25" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="102.5" y="52" text-anchor="middle" class="name">Knowledge Service</text>
+    <text x="102.5" y="74" text-anchor="middle" class="tech">[Python / FastAPI]</text>
+    <text x="102.5" y="98" text-anchor="middle" class="desc">Executa RAG e recupera</text>
+    <text x="102.5" y="116" text-anchor="middle" class="desc">contexto da base de conhecimento</text>
+  </g>
+
+  <g transform="translate(1155,815)">
+    <rect width="205" height="125" class="container"/>
+    <text x="102.5" y="25" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="102.5" y="52" text-anchor="middle" class="name">Audit Service</text>
+    <text x="102.5" y="74" text-anchor="middle" class="tech">[.NET]</text>
+    <text x="102.5" y="98" text-anchor="middle" class="desc">Registra eventos, decisões,</text>
+    <text x="102.5" y="116" text-anchor="middle" class="desc">prompts e ferramentas</text>
+  </g>
+
+  <g transform="translate(1365,815)">
+    <rect width="205" height="125" class="container"/>
+    <text x="102.5" y="25" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="102.5" y="52" text-anchor="middle" class="name">Handoff Service</text>
+    <text x="102.5" y="74" text-anchor="middle" class="tech">[.NET]</text>
+    <text x="102.5" y="98" text-anchor="middle" class="desc">Transfere conversa para</text>
+    <text x="102.5" y="116" text-anchor="middle" class="desc">atendimento humano</text>
+  </g>
+
+  <g transform="translate(1220,1120)">
+    <rect width="205" height="125" class="container"/>
+    <text x="102.5" y="25" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="102.5" y="52" text-anchor="middle" class="name">Renegotiation</text>
+    <text x="102.5" y="73" text-anchor="middle" class="name">Service</text>
+    <text x="102.5" y="94" text-anchor="middle" class="tech">[.NET]</text>
+    <text x="102.5" y="116" text-anchor="middle" class="desc">Elegibilidade, simulação e acordo</text>
+  </g>
+
+  <!-- Datastores -->
+  <g transform="translate(560,1185)">
+    <path d="M0 22 C0 -7 205 -7 205 22 L205 110 C205 140 0 140 0 110 Z" class="database"/>
+    <ellipse cx="102.5" cy="22" rx="102.5" ry="22" fill="#5aa0de" stroke="#2e6295" stroke-width="2"/>
+    <text x="102.5" y="43" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="102.5" y="70" text-anchor="middle" class="name">MongoDB</text>
+    <text x="102.5" y="92" text-anchor="middle" class="tech">[Document Database]</text>
+    <text x="102.5" y="116" text-anchor="middle" class="desc">Mensagens e memória</text>
+  </g>
+
+  <g transform="translate(800,1245)">
+    <path d="M0 22 C0 -7 205 -7 205 22 L205 110 C205 140 0 140 0 110 Z" class="database"/>
+    <ellipse cx="102.5" cy="22" rx="102.5" ry="22" fill="#5aa0de" stroke="#2e6295" stroke-width="2"/>
+    <text x="102.5" y="43" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="102.5" y="70" text-anchor="middle" class="name">Redis</text>
+    <text x="102.5" y="92" text-anchor="middle" class="tech">[Cache / Session Store]</text>
+    <text x="102.5" y="116" text-anchor="middle" class="desc">Sessão e contexto temporário</text>
+  </g>
+
+  <g transform="translate(1135,1285)">
+    <path d="M0 22 C0 -7 205 -7 205 22 L205 110 C205 140 0 140 0 110 Z" class="database"/>
+    <ellipse cx="102.5" cy="22" rx="102.5" ry="22" fill="#5aa0de" stroke="#2e6295" stroke-width="2"/>
+    <text x="102.5" y="43" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="102.5" y="70" text-anchor="middle" class="name">PostgreSQL</text>
+    <text x="102.5" y="92" text-anchor="middle" class="tech">[Relational Database]</text>
+    <text x="102.5" y="116" text-anchor="middle" class="desc">Auditoria, acordos e handoffs</text>
+  </g>
+
+  <g transform="translate(1360,1245)">
+    <rect width="205" height="125" class="container"/>
+    <text x="102.5" y="25" text-anchor="middle" class="stereo">&lt;&lt;container&gt;&gt;</text>
+    <text x="102.5" y="52" text-anchor="middle" class="name">Kafka</text>
+    <text x="102.5" y="74" text-anchor="middle" class="tech">[Event Streaming]</text>
+    <text x="102.5" y="98" text-anchor="middle" class="desc">Eventos de mensagens, intenção,</text>
+    <text x="102.5" y="116" text-anchor="middle" class="desc">simulação, aceite e auditoria</text>
+  </g>
+
+  <!-- Relationships -->
+  <path class="arrow" d="M145 460 C160 545,220 595,280 607"/>
+  <text x="170" y="540" text-anchor="middle" class="rel">Envia e recebe mensagens</text>
+  <text x="170" y="557" text-anchor="middle" class="protocol">[WhatsApp]</text>
+
+  <path class="arrow" d="M510 595 C570 520,560 310,590 225"/>
+  <text x="460" y="455" text-anchor="middle" class="rel">Encaminha webhooks</text>
+  <text x="460" y="472" text-anchor="middle" class="protocol">[HTTPS]</text>
+
+  <path class="arrow" d="M600 225 L637 345"/>
+  <text x="647" y="285" text-anchor="middle" class="rel">Mensagens validadas</text>
+  <text x="647" y="302" text-anchor="middle" class="protocol">[HTTPS]</text>
+
+  <path class="arrow" d="M745 405 C835 455,940 520,1015 575"/>
+  <text x="870" y="495" text-anchor="middle" class="rel">Envia mensagem normalizada</text>
+  <text x="870" y="512" text-anchor="middle" class="protocol">[HTTP/JSON]</text>
+
+  <path class="arrow" d="M980 650 C890 715,895 770,935 840"/>
+  <text x="865" y="740" text-anchor="middle" class="rel">Solicita processamento</text>
+  <text x="865" y="757" text-anchor="middle" class="protocol">[HTTP/JSON]</text>
+
+  <path class="arrow" d="M957 965 L890 1085"/>
+  <text x="865" y="1030" text-anchor="middle" class="rel">Executa tools MCP</text>
+  <text x="865" y="1047" text-anchor="middle" class="protocol">[MCP/HTTP]</text>
+
+  <path class="arrow" d="M1060 905 C1110 965,1135 1025,1140 1085"/>
+  <text x="1168" y="1015" text-anchor="middle" class="rel">Solicita contexto e FAQ</text>
+  <text x="1168" y="1032" text-anchor="middle" class="protocol">[HTTP/JSON]</text>
+
+  <path class="arrow" d="M865 895 C785 898,735 910,690 915"/>
+  <text x="760" y="875" text-anchor="middle" class="rel">Consulta memória</text>
+  <text x="760" y="892" text-anchor="middle" class="protocol">[HTTP/JSON]</text>
+
+  <path class="arrow" d="M660 1040 L655 1185"/>
+  <text x="610" y="1115" text-anchor="middle" class="rel">Persiste histórico</text>
+  <text x="610" y="1132" text-anchor="middle" class="protocol">[TCP]</text>
+
+  <path class="arrow" d="M725 1040 C770 1110,835 1190,880 1245"/>
+  <text x="805" y="1150" text-anchor="middle" class="rel">Consulta sessão ativa</text>
+  <text x="805" y="1167" text-anchor="middle" class="protocol">[TCP]</text>
+
+  <path class="arrow" d="M1245 1150 C1405 1175,1580 1235,1715 1300"/>
+  <text x="1530" y="1205" text-anchor="middle" class="rel">Consulta débitos e formaliza acordo</text>
+  <text x="1530" y="1222" text-anchor="middle" class="protocol">[HTTPS]</text>
+
+  <path class="arrow" d="M1245 1135 C1390 1110,1580 1125,1720 1160"/>
+  <text x="1515" y="1095" text-anchor="middle" class="rel">Consulta documentos e embeddings</text>
+  <text x="1515" y="1112" text-anchor="middle" class="protocol">[HTTPS]</text>
+
+  <path class="arrow" d="M1150 1085 C1280 1015,1550 930,1720 905"/>
+  <text x="1455" y="930" text-anchor="middle" class="rel">Invoca modelos fundacionais</text>
+  <text x="1455" y="947" text-anchor="middle" class="protocol">[HTTPS]</text>
+
+  <path class="arrow" d="M1195 635 C1290 675,1365 735,1425 815"/>
+  <text x="1360" y="712" text-anchor="middle" class="rel">Solicita transferência humana</text>
+  <text x="1360" y="729" text-anchor="middle" class="protocol">[HTTP/JSON]</text>
+
+  <path class="arrow" d="M1570 875 C1640 820,1690 780,1740 768"/>
+  <text x="1675" y="825" text-anchor="middle" class="rel">Transfere conversa e resumo</text>
+  <text x="1675" y="842" text-anchor="middle" class="protocol">[HTTPS]</text>
+
+  <path class="arrow" d="M1848 715 C1844 630,1840 475,1843 285"/>
+  <text x="1948" y="500" text-anchor="middle" class="rel">Operador assume conversa</text>
+
+  <path class="arrow" d="M1265 940 C1280 1045,1245 1210,1238 1285"/>
+  <text x="1323" y="1095" text-anchor="middle" class="rel">Persiste auditoria</text>
+  <text x="1323" y="1112" text-anchor="middle" class="protocol">[SQL]</text>
+
+  <path class="arrow" d="M1360 875 C1480 805,1630 650,1740 615"/>
+  <text x="1585" y="720" text-anchor="middle" class="rel">Envia eventos auditáveis</text>
+  <text x="1585" y="737" text-anchor="middle" class="protocol">[Batch/Event]</text>
+
+  <path class="arrow-event" d="M1195 680 C1300 760,1390 1030,1450 1245"/>
+  <text x="1375" y="980" text-anchor="middle" class="rel">Publica eventos da jornada</text>
+  <text x="1375" y="997" text-anchor="middle" class="protocol">[Kafka]</text>
+
+  <path class="arrow-event" d="M995 1165 C1115 1230,1260 1275,1360 1295"/>
+  <text x="1168" y="1230" text-anchor="middle" class="rel">Publica tool.executed</text>
+  <text x="1168" y="1247" text-anchor="middle" class="protocol">[Kafka]</text>
+
+  <path class="arrow-event" d="M1325 1245 C1338 1270,1350 1290,1360 1305"/>
+  <text x="1305" y="1280" text-anchor="middle" class="rel">Eventos de renegociação</text>
+  <text x="1305" y="1297" text-anchor="middle" class="protocol">[Kafka]</text>
+
+  <path class="arrow-event" d="M1360 1325 C1285 1320,1245 1325,1340 1340"/>
+  <text x="1425" y="1410" text-anchor="middle" class="rel">Consome eventos para auditoria</text>
+  <text x="1425" y="1427" text-anchor="middle" class="protocol">[Kafka]</text>
+
+  <path class="arrow-event" d="M510 620 C740 765,1040 1115,1360 1275"/>
+  <text x="520" y="705" text-anchor="middle" class="rel">Publica message.received</text>
+  <text x="520" y="722" text-anchor="middle" class="protocol">[Kafka]</text>
+
+  <path class="arrow-soft" d="M545 430 C455 450,365 520,510 595"/>
+  <text x="465" y="490" text-anchor="middle" class="rel">Envia respostas ao cliente</text>
+  <text x="465" y="507" text-anchor="middle" class="protocol">[HTTPS]</text>
+
+  <!-- Rule / note -->
+  <rect x="50" y="1425" width="900" height="45" fill="#fff" stroke="#bbb" stroke-width="1.2" rx="6"/>
+  <text x="70" y="1453" class="note">Regra arquitetural: Agent Runtime não acessa diretamente o Core Bancário; ações passam por MCP / Tool Service e serviços de domínio.</text>
 </svg>
