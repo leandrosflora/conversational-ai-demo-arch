@@ -1,0 +1,23 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets:
+          - prometheus:9090
+
+  - job_name: jaeger
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - jaeger:14269
+
+  # Use this target for applications running on the host machine.
+  # Expose application metrics on http://localhost:8080/metrics.
+  - job_name: host-apps
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - host.docker.internal:8080

@@ -1,0 +1,39 @@
+@startuml
+!include <C4/C4_Context>
+
+title C4 Context — Conversational AI Platform
+
+Person(customer, "Cliente", "Cliente do banco que recebe uma campanha ou proposta e interage pelo WhatsApp para renegociar débitos.")
+Person(humanAgent, "Atendente Humano", "Operador que assume conversas transferidas pela IA em situações de exceção.")
+Person(collectionsManager, "Gestor de Cobrança", "Responsável por acompanhar campanhas, conversões e indicadores de recuperação.")
+
+System_Ext(salesforce, "Salesforce CRM", "Origem da base de clientes elegíveis para campanhas de renegociação.")
+System_Ext(datalake, "Data Lake Corporativo", "Repositório corporativo para bases de campanha, histórico, analytics e auditoria.")
+System_Ext(campaignAutomation, "Produto de Dados / Automação de Campanha", "Consome bases do Data Lake e aciona comunicações por Email, SMS ou canais externos.")
+System_Ext(whatsapp, "WhatsApp BSP", "Fornecedor responsável por receber e enviar mensagens WhatsApp.")
+System_Ext(core, "Core Bancário", "Sistemas internos de cliente, contratos, débitos, elegibilidade, simulação e formalização.")
+System_Ext(knowledgeBase, "Base de Conhecimento Corporativa", "FAQ, políticas, procedimentos, produtos e regras de renegociação.")
+System_Ext(bedrock, "Amazon Bedrock", "Serviço de IA Generativa para modelos fundacionais.")
+System_Ext(opensearch, "OpenSearch", "Busca vetorial e recuperação semântica para RAG.")
+System_Ext(attendance, "Plataforma de Atendimento", "Sistema utilizado por atendentes humanos para continuidade das conversas transferidas.")
+
+System(platform, "Plataforma de IA Conversacional", "Orquestra jornadas de renegociação via agentes de IA, RAG, MCP, auditoria e integração com sistemas corporativos.")
+
+Rel(salesforce, datalake, "Disponibiliza base de clientes elegíveis", "Batch / Data Pipeline")
+Rel(datalake, campaignAutomation, "Fornece base de campanha", "Data Product")
+Rel(campaignAutomation, customer, "Envia comunicação com direcionamento para WhatsApp", "Email / SMS / Social")
+
+Rel(customer, whatsapp, "Envia e recebe mensagens", "WhatsApp")
+Rel(whatsapp, platform, "Encaminha webhooks e recebe respostas", "HTTPS")
+
+Rel(platform, core, "Consulta cliente, débitos, elegibilidade, simula propostas e formaliza acordos", "APIs")
+Rel(platform, knowledgeBase, "Consulta conteúdo institucional", "RAG / APIs")
+Rel(platform, bedrock, "Invoca modelos fundacionais", "HTTPS")
+Rel(platform, opensearch, "Recupera contexto semântico", "HTTPS")
+Rel(platform, attendance, "Transfere conversa com resumo e contexto", "HTTPS")
+Rel(platform, datalake, "Envia eventos auditáveis e dados operacionais", "Events / Batch")
+
+Rel(humanAgent, attendance, "Atende conversas transferidas", "Web UI")
+Rel(collectionsManager, datalake, "Consulta indicadores de campanha e recuperação", "Analytics")
+
+@enduml
