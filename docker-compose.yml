@@ -56,30 +56,33 @@ services:
       - conversational-ai
 
   kafka:
-    image: bitnami/kafka:3.7
+    # bitnami/kafka:3.7 was pulled from Docker Hub (Bitnami removed the free-tier tags in 2025).
+    # Switched to the official Apache Kafka image, which uses KAFKA_* env vars (no CFG_ prefix)
+    # and requires an explicit KRaft CLUSTER_ID.
+    image: apache/kafka:3.9.2
     container_name: conversational-ai-kafka
     ports:
       - "9092:9092"
       - "29092:29092"
     environment:
-      KAFKA_ENABLE_KRAFT: "yes"
-      KAFKA_CFG_NODE_ID: 1
-      KAFKA_CFG_PROCESS_ROLES: broker,controller
-      KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
-      KAFKA_CFG_LISTENERS: PLAINTEXT://:9092,EXTERNAL://:29092,CONTROLLER://:9093
-      KAFKA_CFG_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
-      KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
-      KAFKA_CFG_INTER_BROKER_LISTENER_NAME: PLAINTEXT
-      KAFKA_CFG_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_CFG_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_CFG_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_CFG_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      ALLOW_PLAINTEXT_LISTENER: "yes"
+      CLUSTER_ID: "rDamCnDPTyCt49uuavbNGw"
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://:9092,EXTERNAL://:29092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
     volumes:
-      - kafka-data:/bitnami/kafka
+      - kafka-data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
       interval: 15s
       timeout: 10s
       retries: 10
@@ -133,7 +136,9 @@ services:
     image: grafana/grafana:11.1.4
     container_name: conversational-ai-grafana
     ports:
-      - "3000:3000"
+      # Host port 3000 is in Windows' reserved/excluded TCP port range (netsh interface
+      # ipv4 show excludedportrange) on this machine, so it's mapped to 3001 instead.
+      - "3001:3000"
     environment:
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
