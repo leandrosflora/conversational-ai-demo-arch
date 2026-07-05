@@ -1,115 +1,107 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="980" viewBox="0 0 1600 980" role="img" aria-labelledby="title desc">
-  <title id="title">C4 Context — Conversational AI Platform</title>
-  <desc id="desc">C4 context diagram for a conversational AI platform for banking debt renegotiation.</desc>
-  <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
-      <path d="M 0 0 L 10 5 L 0 10 z" fill="#333"/>
-    </marker>
-    <style>
-      .title{font:700 28px Arial,sans-serif;fill:#111}.sub{font:400 14px Arial,sans-serif;fill:#555}
-      .t{font:700 15px Arial,sans-serif;fill:#111}.d{font:400 12px Arial,sans-serif;fill:#333}.l{font:400 11px Arial,sans-serif;fill:#333}
-      .actor{fill:#eef4ff;stroke:#4b6ea9;stroke-width:1.4;rx:10}.sys{fill:#eaf4ff;stroke:#2d5f8b;stroke-width:1.8;rx:12}.ext{fill:#f7f7f7;stroke:#666;stroke-width:1.4;rx:10}.data{fill:#fff7e6;stroke:#9b6b00;stroke-width:1.4;rx:10}
-      .a{stroke:#333;stroke-width:1.7;fill:none;marker-end:url(#arrow)}.ad{stroke:#555;stroke-width:1.5;fill:none;stroke-dasharray:6 5;marker-end:url(#arrow)}
-    </style>
-  </defs>
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1100" viewBox="0 0 1800 1100">
+<defs>
+<style>
+.person{fill:#08427b;stroke:#052e56;stroke-width:2}
+.system{fill:#1168bd;stroke:#0b4884;stroke-width:2}
+.external{fill:#999;stroke:#666;stroke-width:2}
+.t1{font:bold 18px Arial;fill:white}
+.t2{font:italic 12px Arial;fill:#eaeaea}
+.t3{font:13px Arial;fill:white}
+.title{font:bold 24px Arial;fill:#111}
+.rel{font:12px Arial;fill:#444}
+.line{stroke:#666;stroke-width:1.6;fill:none;marker-end:url(#a)}
+<marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto">
+<path d="M0 0 L10 5 L0 10z" fill="#666"/>
+</marker>
+</style>
+</defs>
 
-  <rect width="1600" height="980" fill="#fff"/>
-  <text x="50" y="50" class="title">C4 Context — Conversational AI Platform</text>
-  <text x="50" y="75" class="sub">Renegociação bancária via IA conversacional. Salesforce alimenta Data Lake; a plataforma entra na jornada pelo WhatsApp.</text>
+<rect width="1800" height="1100" fill="white"/>
+<text x="900" y="40" text-anchor="middle" class="title">C4 Context — Conversational AI Platform</text>
 
-  <rect x="60" y="130" width="220" height="72" class="actor"/>
-  <text x="170" y="158" text-anchor="middle" class="t">Cliente</text>
-  <text x="170" y="180" text-anchor="middle" class="d">Interage para renegociar débitos</text>
+<!-- people -->
+<rect x="80" y="260" width="220" height="140" class="person"/>
+<text x="190" y="295" text-anchor="middle" class="t2">&lt;&lt;person&gt;&gt;</text>
+<text x="190" y="330" text-anchor="middle" class="t1">Cliente</text>
+<text x="190" y="360" text-anchor="middle" class="t3">Cliente do banco que</text>
+<text x="190" y="380" text-anchor="middle" class="t3">renegocia débitos</text>
 
-  <rect x="60" y="740" width="220" height="72" class="actor"/>
-  <text x="170" y="768" text-anchor="middle" class="t">Atendente Humano</text>
-  <text x="170" y="790" text-anchor="middle" class="d">Assume conversas transferidas</text>
+<rect x="80" y="700" width="220" height="140" class="person"/>
+<text x="190" y="735" text-anchor="middle" class="t2">&lt;&lt;person&gt;&gt;</text>
+<text x="190" y="770" text-anchor="middle" class="t1">Atendente Humano</text>
+<text x="190" y="800" text-anchor="middle" class="t3">Assume conversas</text>
+<text x="190" y="820" text-anchor="middle" class="t3">transferidas pela IA</text>
 
-  <rect x="60" y="860" width="220" height="72" class="actor"/>
-  <text x="170" y="888" text-anchor="middle" class="t">Gestor de Cobrança</text>
-  <text x="170" y="910" text-anchor="middle" class="d">Acompanha indicadores</text>
+<rect x="150" y="470" width="320" height="160" class="external"/>
+<text x="310" y="505" text-anchor="middle" class="t2">&lt;&lt;external system&gt;&gt;</text>
+<text x="310" y="545" text-anchor="middle" class="t1">WhatsApp BSP</text>
+<text x="310" y="580" text-anchor="middle" class="t3">Recebe e envia mensagens</text>
+<text x="310" y="600" text-anchor="middle" class="t3">WhatsApp</text>
 
-  <rect x="390" y="130" width="230" height="72" class="ext"/>
-  <text x="505" y="158" text-anchor="middle" class="t">WhatsApp BSP</text>
-  <text x="505" y="180" text-anchor="middle" class="d">Mensageria WhatsApp</text>
+<!-- central system -->
+<rect x="700" y="400" width="420" height="220" class="system"/>
+<text x="910" y="445" text-anchor="middle" class="t2">&lt;&lt;software system&gt;&gt;</text>
+<text x="910" y="495" text-anchor="middle" class="t1">Plataforma de IA Conversacional</text>
+<text x="910" y="535" text-anchor="middle" class="t3">Renegociação bancária com agentes,</text>
+<text x="910" y="560" text-anchor="middle" class="t3">RAG, MCP, auditoria e handoff humano</text>
 
-  <rect x="690" y="365" width="300" height="130" class="sys"/>
-  <text x="840" y="405" text-anchor="middle" class="t">Plataforma de IA Conversacional</text>
-  <text x="840" y="432" text-anchor="middle" class="d">Orquestra jornada de renegociação</text>
-  <text x="840" y="452" text-anchor="middle" class="d">com agentes, RAG, MCP e auditoria</text>
+<!-- external systems -->
+<rect x="1320" y="120" width="300" height="120" class="external"/>
+<text x="1470" y="150" text-anchor="middle" class="t2">&lt;&lt;external system&gt;&gt;</text>
+<text x="1470" y="190" text-anchor="middle" class="t1">Salesforce CRM</text>
+<text x="1470" y="220" text-anchor="middle" class="t3">Clientes e campanhas</text>
 
-  <rect x="1170" y="105" width="250" height="72" class="ext"/>
-  <text x="1295" y="133" text-anchor="middle" class="t">Salesforce CRM</text>
-  <text x="1295" y="155" text-anchor="middle" class="d">Base de clientes elegíveis</text>
+<rect x="1320" y="290" width="300" height="120" class="external"/>
+<text x="1470" y="320" text-anchor="middle" class="t2">&lt;&lt;external system&gt;&gt;</text>
+<text x="1470" y="360" text-anchor="middle" class="t1">Data Lake Corporativo</text>
+<text x="1470" y="390" text-anchor="middle" class="t3">Analytics e auditoria</text>
 
-  <rect x="1170" y="225" width="250" height="72" class="data"/>
-  <text x="1295" y="253" text-anchor="middle" class="t">Data Lake Corporativo</text>
-  <text x="1295" y="275" text-anchor="middle" class="d">Campanhas, auditoria e analytics</text>
+<rect x="1320" y="460" width="300" height="120" class="external"/>
+<text x="1470" y="490" text-anchor="middle" class="t2">&lt;&lt;external system&gt;&gt;</text>
+<text x="1470" y="530" text-anchor="middle" class="t1">Core Bancário</text>
+<text x="1470" y="560" text-anchor="middle" class="t3">Débitos, ofertas e acordos</text>
 
-  <rect x="1170" y="345" width="250" height="85" class="ext"/>
-  <text x="1295" y="373" text-anchor="middle" class="t">Produto de Dados /</text>
-  <text x="1295" y="393" text-anchor="middle" class="t">Automação de Campanha</text>
-  <text x="1295" y="413" text-anchor="middle" class="d">Email, SMS e canais externos</text>
+<rect x="1320" y="630" width="300" height="120" class="external"/>
+<text x="1470" y="660" text-anchor="middle" class="t2">&lt;&lt;external system&gt;&gt;</text>
+<text x="1470" y="700" text-anchor="middle" class="t1">Amazon Bedrock</text>
+<text x="1470" y="730" text-anchor="middle" class="t3">Modelos fundacionais</text>
 
-  <rect x="1170" y="500" width="250" height="72" class="ext"/>
-  <text x="1295" y="528" text-anchor="middle" class="t">Core Bancário</text>
-  <text x="1295" y="550" text-anchor="middle" class="d">Débitos, ofertas e acordos</text>
+<rect x="1320" y="800" width="300" height="120" class="external"/>
+<text x="1470" y="830" text-anchor="middle" class="t2">&lt;&lt;external system&gt;&gt;</text>
+<text x="1470" y="870" text-anchor="middle" class="t1">OpenSearch</text>
+<text x="1470" y="900" text-anchor="middle" class="t3">Busca vetorial e RAG</text>
 
-  <rect x="1170" y="610" width="250" height="72" class="ext"/>
-  <text x="1295" y="638" text-anchor="middle" class="t">Base de Conhecimento</text>
-  <text x="1295" y="660" text-anchor="middle" class="d">FAQ, políticas e procedimentos</text>
+<rect x="1320" y="970" width="300" height="120" class="external"/>
+<text x="1470" y="1000" text-anchor="middle" class="t2">&lt;&lt;external system&gt;&gt;</text>
+<text x="1470" y="1040" text-anchor="middle" class="t1">Plataforma Atendimento</text>
+<text x="1470" y="1070" text-anchor="middle" class="t3">Operação humana</text>
 
-  <rect x="690" y="610" width="250" height="72" class="ext"/>
-  <text x="815" y="638" text-anchor="middle" class="t">Amazon Bedrock</text>
-  <text x="815" y="660" text-anchor="middle" class="d">Modelos fundacionais</text>
+<!-- relationships -->
+<path class="line" d="M300 330 L700 480"/>
+<text x="500" y="380" class="rel">Interage via WhatsApp</text>
 
-  <rect x="690" y="735" width="250" height="72" class="ext"/>
-  <text x="815" y="763" text-anchor="middle" class="t">OpenSearch</text>
-  <text x="815" y="785" text-anchor="middle" class="d">Busca vetorial e RAG</text>
+<path class="line" d="M470 550 L700 520"/>
+<text x="560" y="515" class="rel">Entrega mensagens e respostas</text>
 
-  <rect x="390" y="740" width="250" height="72" class="ext"/>
-  <text x="515" y="768" text-anchor="middle" class="t">Plataforma de Atendimento</text>
-  <text x="515" y="790" text-anchor="middle" class="d">Handoff humano</text>
+<path class="line" d="M1120 500 L1320 520"/>
+<text x="1180" y="485" class="rel">Consulta e formaliza acordos</text>
 
-  <path class="a" d="M1170 141 L1120 141 L1120 261 L1170 261"/>
-  <text x="1080" y="205" text-anchor="middle" class="l">Base elegível</text>
+<path class="line" d="M1120 540 L1320 690"/>
+<text x="1185" y="625" class="rel">Inferência de IA</text>
 
-  <path class="a" d="M1295 297 L1295 345"/>
-  <text x="1365" y="325" text-anchor="middle" class="l">Data product</text>
+<path class="line" d="M1120 570 L1320 860"/>
+<text x="1180" y="790" class="rel">Busca semântica / RAG</text>
 
-  <path class="ad" d="M1170 388 C820 300 470 95 280 150"/>
-  <text x="765" y="246" text-anchor="middle" class="l">Comunicação de campanha</text>
+<path class="line" d="M1120 470 L1320 350"/>
+<text x="1190" y="390" class="rel">Publica eventos auditáveis</text>
 
-  <path class="a" d="M280 166 L390 166"/>
-  <text x="335" y="150" text-anchor="middle" class="l">WhatsApp</text>
+<path class="line" d="M1470 240 L1470 290"/>
+<text x="1500" y="270" class="rel">Alimenta</text>
 
-  <path class="a" d="M620 166 C690 215 720 285 765 365"/>
-  <text x="735" y="245" text-anchor="middle" class="l">Webhooks HTTPS</text>
+<path class="line" d="M1120 600 L1320 1030"/>
+<text x="1190" y="900" class="rel">Transfere conversa e contexto</text>
 
-  <path class="a" d="M990 430 L1170 536"/>
-  <text x="1095" y="468" text-anchor="middle" class="l">Consulta e formaliza</text>
+<path class="line" d="M1320 1030 L300 770"/>
+<text x="780" y="970" class="rel">Atendimento humano</text>
 
-  <path class="a" d="M990 445 L1170 646"/>
-  <text x="1095" y="585" text-anchor="middle" class="l">Conteúdo institucional</text>
-
-  <path class="a" d="M815 495 L815 610"/>
-  <text x="735" y="560" text-anchor="middle" class="l">Inferência</text>
-
-  <path class="a" d="M840 495 C840 580 840 660 815 735"/>
-  <text x="890" y="715" text-anchor="middle" class="l">RAG</text>
-
-  <path class="a" d="M690 470 C610 555 560 645 515 740"/>
-  <text x="585" y="632" text-anchor="middle" class="l">Handoff</text>
-
-  <path class="a" d="M280 776 L390 776"/>
-  <text x="335" y="760" text-anchor="middle" class="l">Atendimento</text>
-
-  <path class="ad" d="M990 460 C1080 510 1130 620 1170 261"/>
-  <text x="1130" y="825" text-anchor="middle" class="l">Eventos auditáveis / analytics</text>
-
-  <path class="ad" d="M280 896 C620 940 970 880 1170 297"/>
-  <text x="650" y="930" text-anchor="middle" class="l">Indicadores de recuperação</text>
-
-  <rect x="50" y="940" width="680" height="28" fill="#fff" stroke="#bbb" rx="8"/>
-  <text x="65" y="959" class="l">Premissa: Salesforce não integra diretamente com a Plataforma de IA Conversacional; ele alimenta o Data Lake.</text>
 </svg>
