@@ -1,0 +1,9 @@
+﻿################################################################################
+# This .gitignore file was automatically created by Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs/conversational-ai-demo-arch/CopilotIndices/17.14.1691.21253
+*.vsidx
+/.vs/conversational-ai-demo-arch/v17/TestStore/0
+/.vs/conversational-ai-demo-arch/v17
+/.vs
