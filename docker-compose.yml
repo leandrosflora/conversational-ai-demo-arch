@@ -28,6 +28,7 @@ services:
       MONGO_INITDB_DATABASE: conversational_ai
     volumes:
       - mongodb-data:/data/db
+      - ./database/conversational-ai-mongodb-init.js:/docker-entrypoint-initdb.d/001-conversational-ai-mongodb-init.js:ro
     healthcheck:
       test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
       interval: 10s
@@ -47,6 +48,7 @@ services:
       POSTGRES_DB: conversational_ai
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./database/conversational-ai-postgres-init.sql:/docker-entrypoint-initdb.d/001-conversational-ai-postgres-init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d conversational_ai"]
       interval: 10s
