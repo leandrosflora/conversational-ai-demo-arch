@@ -178,6 +178,8 @@ Kafka substituiu o que antes era uma fila em memória entre o webhook e o Orches
 
 `whatsapp-bff` é o único serviço que depende do Kafka da infraestrutura (seção 2) para funcionar, e não só para publicar eventos de auditoria: sem Kafka no ar, o webhook responde `503` (não aceita a entrega) em vez de `200`.
 
+> Esta tabela é um resumo operacional para subir o ambiente. A referência canônica de portas, tópicos Kafka e datastores — mantida separadamente para não duplicar e divergir desta — é [`docs/contracts/services-map.md`](contracts/services-map.md) e [`docs/contracts/kafka-events.md`](contracts/kafka-events.md). Detalhe de cada serviço (APIs, regras de negócio, eventos) em [`docs/services/`](services/).
+
 ---
 
 ## 4. Smoke test end-to-end
