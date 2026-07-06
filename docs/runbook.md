@@ -22,7 +22,7 @@ Nenhum dos serviços de aplicação tem Dockerfile ainda — todos rodam localme
 
 - Docker Desktop (Docker Engine 20.10+, Compose v2) rodando.
 - .NET 8 SDK (`dotnet --version`).
-- Python 3.14+ (cada serviço Python tem seu próprio `.venv` já criado em `agent-runtime-renegotiation/.venv` e `tool-service-renegotiation/.venv`).
+- Python 3.12 (cada serviço Python tem seu próprio `.venv` já criado em `agent-runtime-renegotiation/.venv` e `tool-service-renegotiation/.venv`). **Não use Python 3.14**: o debugger do Visual Studio 2022 (PTVS/debugpy) ainda não suporta as mudanças internas do módulo `threading` no 3.14 (`AttributeError: '_MainThread' object has no attribute '_handle'` ao encerrar o processo) — [issue conhecida](https://github.com/microsoft/debugpy/issues/1893), corrigida upstream mas ainda não lançada pelo VS.
 - Portas livres no host: `5432, 6379, 9092, 29092, 9090, 16686, 27017, 3001, 3100, 4317, 4318, 5153, 8000, 8100, 8400, 9400, 9401, 9402, 9403, 9404`.
 
 ---
