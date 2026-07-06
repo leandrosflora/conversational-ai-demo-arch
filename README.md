@@ -2,6 +2,13 @@
 
 Arquitetura de referência para plataformas de IA conversacional utilizando agentes, MCP, RAG, WhatsApp, APIs corporativas e observabilidade ponta a ponta.
 
+## Documentação
+
+- [Contexto de negócio](docs/context/business-context.md) — jornadas, personas e escopo.
+- [C4 nível 1 (contexto)](docs/architecture/c4-context.md) e [diagramas C4](docs/architecture/C4/) (`.puml`/`.svg`/`.png`).
+- [Diagramas de sequência da jornada](docs/architecture/sequence-diagrams.md) — passo a passo técnico, do webhook do WhatsApp até a consulta de débitos/elegibilidade.
+- [Runbook do ambiente local](docs/runbook.md) — como subir a infraestrutura e os serviços de aplicação.
+
 ## Ambiente local
 
 Subir infraestrutura local:
