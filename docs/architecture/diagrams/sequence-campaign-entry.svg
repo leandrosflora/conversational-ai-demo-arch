@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="688" viewBox="0 0 1000 688">
+<style>text{font-family:Arial,Helvetica,sans-serif;font-size:13px;fill:#111827}.title{font-size:22px;font-weight:700}.box{fill:#f8fafc;stroke:#334155;stroke-width:1.3}.life{stroke:#94a3b8;stroke-dasharray:5 5}.arrow{stroke:#111827;stroke-width:1.5;fill:none}.async{stroke-dasharray:6 4}.label{font-size:12px}.note{fill:#fff7ed;stroke:#fb923c}.loop{fill:none;stroke:#64748b;stroke-dasharray:8 5}.small{font-size:11px;fill:#475569}</style>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#111827"/></marker></defs>
+<text x="60" y="38" class="title">A · Entrada por campanha (conceitual)</text>
+<rect class="box" x="5" y="90" rx="6" ry="6" width="110" height="44"/>
+<text text-anchor="middle" x="60" y="110">Salesforce CRM</text>
+<line class="life" x1="60" y1="134" x2="60" y2="653"/>
+<rect class="box" x="155" y="90" rx="6" ry="6" width="110" height="44"/>
+<text text-anchor="middle" x="210" y="110">Data Lake</text>
+<line class="life" x1="210" y1="134" x2="210" y2="653"/>
+<rect class="box" x="305" y="90" rx="6" ry="6" width="110" height="44"/>
+<text text-anchor="middle" x="360" y="110">Automação</text>
+<text text-anchor="middle" x="360" y="125">Campanha</text>
+<line class="life" x1="360" y1="134" x2="360" y2="653"/>
+<rect class="box" x="455" y="90" rx="6" ry="6" width="110" height="44"/>
+<text text-anchor="middle" x="510" y="110">Cliente</text>
+<line class="life" x1="510" y1="134" x2="510" y2="653"/>
+<rect class="box" x="605" y="90" rx="6" ry="6" width="110" height="44"/>
+<text text-anchor="middle" x="660" y="110">WhatsApp BSP</text>
+<line class="life" x1="660" y1="134" x2="660" y2="653"/>
+<rect class="box" x="755" y="90" rx="6" ry="6" width="110" height="44"/>
+<text text-anchor="middle" x="810" y="110">Plataforma IA</text>
+<line class="life" x1="810" y1="134" x2="810" y2="653"/>
+<line class="arrow" x1="60" y1="169" x2="210" y2="169" marker-end="url(#arrow)"/>
+<text class="label" text-anchor="middle" x="135.0" y="161">Base de clientes elegíveis</text>
+<line class="arrow" x1="210" y1="227" x2="360" y2="227" marker-end="url(#arrow)"/>
+<text class="label" text-anchor="middle" x="285.0" y="219">Base de campanha consumida</text>
+<line class="arrow" x1="360" y1="285" x2="510" y2="285" marker-end="url(#arrow)"/>
+<text class="label" text-anchor="middle" x="435.0" y="277">Comunicação de ativação</text>
+<rect class="note" x="455" y="318" rx="6" width="110" height="44"/>
+<text class="small" x="465" y="335">Cliente responde e vai para</text>
+<text class="small" x="465" y="349">WhatsApp oficial</text>
+<line class="arrow" x1="510" y1="401" x2="660" y2="401" marker-end="url(#arrow)"/>
+<text class="label" text-anchor="middle" x="585.0" y="393">Inicia conversa</text>
+<line class="arrow" x1="660" y1="459" x2="810" y2="459" marker-end="url(#arrow)"/>
+<text class="label" text-anchor="middle" x="735.0" y="451">Webhook com mensagem inicial</text>
+<path class="arrow" d="M810,517 C880,517 880,549 810,549" marker-end="url(#arrow)"/>
+<text class="label" x="828" y="509">Inicia identificação e débitos</text>
+<line class="arrow async" x1="810" y1="575" x2="210" y2="575" marker-end="url(#arrow)"/>
+<text class="label" text-anchor="middle" x="510.0" y="567">Eventos de jornada analytics</text>
+</svg>
