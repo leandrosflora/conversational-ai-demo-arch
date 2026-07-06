@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="2196" viewBox="0 0 1500 2196">
+<style>text{font-family:Arial,Helvetica,sans-serif;font-size:13px;fill:#111827}.title{font-size:22px;font-weight:700}.box{fill:#f8fafc;stroke:#334155;stroke-width:1.3}.life{stroke:#94a3b8;stroke-dasharray:5 5}.arrow{stroke:#111827;stroke-width:1.5;fill:none}.async{stroke-dasharray:6 4}.label{font-size:12px}.note{fill:#fff7ed;stroke:#fb923c}.loop{fill:none;stroke:#64748b;stroke-dasharray:8 5}.small{font-size:11px;fill:#475569}</style>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L9,3 z" fill="#111827"/></marker></defs>
+<text x="60" y="38" class="title">B · Identificação e consulta de débitos/elegibilidade</text>
+<rect class="box" x="5" y="90" rx="6" ry="6" width="110" height="44"/><text text-anchor="middle" x="60" y="110">Cliente</text><line class="life" x1="60" y1="134" x2="60" y2="2161"/>
+<rect class="box" x="155" y="90" rx="6" ry="6" width="110" height="44"/><text text-anchor="middle" x="210" y="110">WhatsApp BSP</text><line class="life" x1="210" y1="134" x2="210" y2="2161"/>
+<rect class="box" x="305" y="90" rx="6" ry="6" width="110" height="44"/><text text-anchor="middle" x="360" y="110">whatsapp-bff</text><line class="life" x1="360" y1="134" x2="360" y2="2161"/>
+<rect class="box" x="455" y="90" rx="6" ry="6" width="110" height="44"/><text text-anchor="middle" x="510" y="110">Kafka</text><line class="life" x1="510" y1="134" x2="510" y2="2161"/>
+<rect class="box" x="605" y="90" rx="6" ry="6" width="110" height="44"/><text text-anchor="middle" x="660" y="110">orchestrator</text><line class="life" x1="660" y1="134" x2="660" y2="2161"/>
+<rect class="box" x="755" y="90" rx="6" ry="6" width="110" height="44"/><text text-anchor="middle" x="810" y="110">agent-runtime</text><line class="life" x1="810" y1="134" x2="810" y2="2161"/>
+<rect class="box" x="905" y="90" rx="6" ry="6" width="110" height="44"/><text text-anchor="middle" x="960" y="110">tool-service</text><line class="life" x1="960" y1="134" x2="960" y2="2161"/>
+<rect class="box" x="1055" y="90" rx="6" ry="6" width="110" height="44"/><text text-anchor="middle" x="1110" y="110">renegotiation</text><line class="life" x1="1110" y1="134" x2="1110" y2="2161"/>
+<rect class="box" x="1205" y="90" rx="6" ry="6" width="110" height="44"/><text text-anchor="middle" x="1260" y="110">core-mock</text><line class="life" x1="1260" y1="134" x2="1260" y2="2161"/>
+<line class="arrow" x1="60" y1="169" x2="210" y2="169" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="135" y="161">Mensagem</text>
+<line class="arrow" x1="210" y1="227" x2="360" y2="227" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="285" y="219">POST /webhooks/whatsapp</text>
+<path class="arrow" d="M360,285 C430,285 430,317 360,317" marker-end="url(#arrow)"/><text class="label" x="378" y="277">Valida HMAC e deduplica</text>
+<line class="arrow async" x1="360" y1="343" x2="510" y2="343" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="435" y="335">channel.webhook.received</text>
+<line class="arrow async" x1="360" y1="401" x2="210" y2="401" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="285" y="393">200 OK / 503</text>
+<rect class="note" x="305" y="434" rx="6" width="260" height="44"/><text class="small" x="315" y="451">Consumer Kafka no BFF</text><text class="small" x="315" y="465">com retry e backpressure</text>
+<line class="arrow async" x1="510" y1="517" x2="360" y2="517" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="435" y="509">Entrega evento ao consumer</text>
+<line class="arrow" x1="360" y1="575" x2="660" y2="575" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="510" y="567">POST /messages</text>
+<path class="arrow" d="M660,633 C730,633 730,665 660,665" marker-end="url(#arrow)"/><text class="label" x="678" y="625">Sessão TTL 30 min</text>
+<line class="arrow" x1="660" y1="691" x2="810" y2="691" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="735" y="683">POST /process</text>
+<line class="arrow" x1="810" y1="749" x2="960" y2="749" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="885" y="741">MCP list_tools()</text>
+<rect class="loop" x="30" y="777" width="1310" height="968" rx="6"/><text class="small" x="40" y="795">loop: chamadas MCP por dado necessário</text>
+<line class="arrow" x1="810" y1="865" x2="960" y2="865" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="885" y="857">consultar_cliente(cpf)</text>
+<line class="arrow" x1="960" y1="923" x2="1110" y2="923" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="1035" y="915">GET /clients/{cpf}</text>
+<line class="arrow" x1="1110" y1="981" x2="1260" y2="981" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="1185" y="973">ClientApi :9401</text>
+<line class="arrow async" x1="1260" y1="1039" x2="1110" y2="1039" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="1185" y="1031">200 dados cliente</text>
+<line class="arrow async" x1="1110" y1="1097" x2="960" y2="1097" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="1035" y="1089">200 OK</text>
+<line class="arrow async" x1="960" y1="1155" x2="510" y2="1155" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="735" y="1147">tool.executed</text>
+<line class="arrow async" x1="960" y1="1213" x2="810" y2="1213" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="885" y="1205">resultado cliente</text>
+<line class="arrow" x1="810" y1="1271" x2="960" y2="1271" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="885" y="1263">consultar_contratos</text>
+<line class="arrow" x1="960" y1="1329" x2="1110" y2="1329" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="1035" y="1321">GET /contracts</text>
+<line class="arrow async" x1="1110" y1="1387" x2="960" y2="1387" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="1035" y="1379">200 contratos</text>
+<line class="arrow async" x1="960" y1="1445" x2="510" y2="1445" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="735" y="1437">tool.executed</text>
+<line class="arrow" x1="810" y1="1503" x2="960" y2="1503" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="885" y="1495">consultar_débitos + elegibilidade</text>
+<line class="arrow" x1="960" y1="1561" x2="1110" y2="1561" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="1035" y="1553">GET debts / eligibility</text>
+<line class="arrow" x1="1110" y1="1619" x2="1260" y2="1619" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="1185" y="1611">EligibilityApi :9402</text>
+<line class="arrow async" x1="1260" y1="1677" x2="1110" y2="1677" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="1185" y="1669">200 eligible / reason</text>
+<line class="arrow async" x1="960" y1="1735" x2="510" y2="1735" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="735" y="1727">tool.executed</text>
+<line class="arrow async" x1="810" y1="1793" x2="510" y2="1793" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="660" y="1785">agent.events</text>
+<line class="arrow async" x1="810" y1="1851" x2="660" y2="1851" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="735" y="1843">200 Intent/ReplyText</text>
+<line class="arrow async" x1="660" y1="1909" x2="510" y2="1909" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="585" y="1901">intent.detected + state_changed</text>
+<line class="arrow" x1="660" y1="1967" x2="360" y2="1967" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="510" y="1959">POST /internal/messages</text>
+<line class="arrow" x1="360" y1="2025" x2="210" y2="2025" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="285" y="2017">Graph API /messages</text>
+<line class="arrow" x1="210" y1="2083" x2="60" y2="2083" marker-end="url(#arrow)"/><text class="label" text-anchor="middle" x="135" y="2075">Resposta ao cliente</text>
+</svg>
