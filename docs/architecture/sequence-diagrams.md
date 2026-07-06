@@ -6,11 +6,11 @@ Do gatilho de campanha até a consulta de débitos e elegibilidade: como uma men
 
 | Notação | Significado |
 |---|---|
-| `A->>B` | Chamada síncrona (HTTP ou MCP) |
-| `A-->>B` | Retorno / resposta a uma chamada síncrona |
-| `A--)B` | Evento assíncrono (publish no Kafka, fire-and-forget) |
-| `A->>A` | Processamento interno (self-call) |
-| `Note` | Observação — comportamento não óbvio a partir do código |
+| `->` | Chamada síncrona (HTTP ou MCP) |
+| `-->` | Retorno / resposta a uma chamada síncrona |
+| `->>` | Evento assíncrono / publicação Kafka |
+| `activate` / `deactivate` | Janela de processamento interno |
+| `note` | Observação — comportamento não óbvio a partir do código |
 | `loop` / `alt` | Fragmento que se repete ou depende de uma condição |
 
 **Conceitual** = descrito em [`business-context.md`](../context/business-context.md) / [C4 nível 1](c4-context.md), sem componente técnico implementado neste workspace.
@@ -22,23 +22,36 @@ Do gatilho de campanha até a consulta de débitos e elegibilidade: como uma men
 
 Salesforce CRM → Data Lake → Automação de Campanha → Cliente → WhatsApp. Nenhum destes componentes existe como código neste workspace — é o gatilho de negócio que antecede o diagrama B.
 
-```mermaid
-sequenceDiagram
-    participant SF as Salesforce CRM
-    participant DL as Data Lake Corporativo
-    participant Camp as Automação de Campanha
-    participant Cliente
-    participant BSP as WhatsApp BSP
-    participant Plat as Plataforma de IA Conversacional
+```plantuml
+@startuml
+hide footbox
+autonumber
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
 
-    SF->>DL: Disponibiliza base de clientes elegíveis para renegociação
-    DL->>Camp: Base de campanha é consumida
-    Camp->>Cliente: Envia comunicação de ativação (Email · SMS · Instagram · Facebook)
-    Note over Cliente: Cliente decide responder e é direcionado ao WhatsApp oficial do banco
-    Cliente->>BSP: Inicia a conversa no WhatsApp oficial do banco
-    BSP->>Plat: Encaminha a mensagem inicial (webhook)
-    Plat->>Plat: Inicia a jornada de identificação e consulta de débitos (ver diagrama B)
-    Plat--)DL: Eventos de jornada para auditoria/analytics (conceitual — sem serviço implementado)
+title A · Entrada por campanha (conceitual)
+
+participant "Salesforce CRM" as SF
+participant "Data Lake Corporativo" as DL
+participant "Automação de Campanha" as Camp
+actor Cliente
+participant "WhatsApp BSP" as BSP
+participant "Plataforma de IA Conversacional" as Plat
+
+SF -> DL: Disponibiliza base de clientes elegíveis para renegociação
+DL -> Camp: Base de campanha é consumida
+Camp -> Cliente: Envia comunicação de ativação\nEmail, SMS, Instagram ou Facebook
+
+note over Cliente
+Cliente decide responder e é direcionado
+ao WhatsApp oficial do banco.
+end note
+
+Cliente -> BSP: Inicia a conversa no WhatsApp oficial do banco
+BSP -> Plat: Encaminha a mensagem inicial via webhook
+Plat -> Plat: Inicia a jornada de identificação\ne consulta de débitos
+Plat ->> DL: Eventos de jornada para auditoria/analytics\nconceitual, sem serviço implementado
+@enduml
 ```
 
 ---
@@ -49,70 +62,119 @@ Verificado no código e nas specs OpenSpec. Portas conforme o [`runbook.md`](../
 
 > A entrada via Kafka (`channel.webhook.received` → `KafkaWebhookConsumerService`) substituiu a antiga fila em memória entre o webhook e o Orchestrator: a durabilidade agora sobrevive a um restart/crash do `whatsapp-bff`, e uma indisponibilidade do Orchestrator vira retry com backpressure em vez de perda de mensagem.
 
-```mermaid
-sequenceDiagram
-    participant Cliente
-    participant BSP as WhatsApp BSP
-    participant BFF as whatsapp-bff
-    participant Kafka
-    participant Orch as conversation-orchestrator
-    participant Agent as agent-runtime-renegotiation
-    participant Tool as tool-service-renegotiation
-    participant Reneg as renegotiation-service
-    participant Core as core-bancario-mock
+```plantuml
+@startuml
+hide footbox
+autonumber
+skinparam sequenceMessageAlign center
+skinparam responseMessageBelowArrow true
 
-    Cliente->>BSP: Envia mensagem (texto ou resposta interativa)
-    BSP->>BFF: POST /webhooks/whatsapp (assinado X-Hub-Signature-256)
-    BFF->>BFF: Valida HMAC-SHA256, deduplica por messageId
-    BFF->>Kafka: Publica channel.webhook.received (payload bruto, chave = telefone)
-    BFF-->>BSP: 200 OK (503 se o Kafka recusar a publicação)
-    Note over BFF,Kafka: KafkaWebhookConsumerService (BackgroundService no mesmo processo) consome o tópico de forma assíncrona
-    Kafka-->>BFF: Entrega channel.webhook.received ao consumer
-    BFF->>Orch: POST /messages (MessageId, From, ConversationId, Type, Text)
-    Note right of BFF: commit do offset só ocorre se o forward tiver sucesso;<br/>se falhar, dá Seek de volta ao mesmo offset e retenta a cada ~2s
-    Orch->>Orch: Cria ou recupera a sessão da conversa (TTL 30 min, em memória)
-    Orch->>Agent: POST /process (ConversationId, JourneyStage, LastIntent, Text)
-    Agent->>Tool: MCP list_tools() (streamable-HTTP · /mcp)
+title B · Identificação do cliente e consulta de débitos/elegibilidade
 
-    loop uma chamada MCP para cada dado que o agente precisa confirmar
-        Agent->>Tool: call consultar_cliente(cpf)
-        Tool->>Reneg: GET /clients/{cpf}
-        Reneg->>Core: ClientApi (:9401)
-        Core-->>Reneg: 200 OK · dados do cliente
-        Reneg-->>Tool: 200 OK (sempre 200 — mesmo se o cliente não for encontrado)
-        Tool--)Kafka: tool.executed (CPF mascarado)
-        Tool-->>Agent: resultado: consultar_cliente
+actor Cliente
+participant "WhatsApp BSP" as BSP
+participant "whatsapp-bff" as BFF
+queue Kafka
+participant "conversation-orchestrator" as Orch
+participant "agent-runtime-renegotiation" as Agent
+participant "tool-service-renegotiation" as Tool
+participant "renegotiation-service" as Reneg
+participant "core-bancario-mock" as Core
 
-        Agent->>Tool: call consultar_contratos(clientId)
-        Tool->>Reneg: GET /clients/{clientId}/contracts
-        Reneg-->>Tool: 200 OK · contratos
-        Tool--)Kafka: tool.executed
-        Tool-->>Agent: resultado: consultar_contratos
+Cliente -> BSP: Envia mensagem\ntexto ou resposta interativa
+BSP -> BFF: POST /webhooks/whatsapp\nassinado com X-Hub-Signature-256
+activate BFF
+BFF -> BFF: Valida HMAC-SHA256\ne deduplica por messageId
+BFF ->> Kafka: Publica channel.webhook.received\npayload bruto, chave = telefone
+BFF --> BSP: 200 OK\n503 se Kafka recusar a publicação
+deactivate BFF
 
-        Agent->>Tool: call consultar_débitos(contractId)
-        Tool->>Reneg: GET /contracts/{contractId}/debts
-        Reneg-->>Tool: 200 OK · débitos em aberto
-        Tool--)Kafka: tool.executed
-        Tool-->>Agent: resultado: consultar_débitos
+note over BFF,Kafka
+KafkaWebhookConsumerService
+BackgroundService no mesmo processo
+consome o tópico de forma assíncrona.
+end note
 
-        Agent->>Tool: call validar_elegibilidade(contractId)
-        Tool->>Reneg: GET /contracts/{contractId}/eligibility
-        Reneg->>Core: EligibilityApi (:9402)
-        Core-->>Reneg: 200 OK · eligible / reason
-        Reneg-->>Tool: 200 OK (502 só se o Core Bancário estiver realmente inacessível)
-        Tool--)Kafka: tool.executed
-        Tool-->>Agent: resultado: validar_elegibilidade
-    end
+Kafka ->> BFF: Entrega channel.webhook.received ao consumer
+BFF -> Orch: POST /messages\nMessageId, From, ConversationId, Type, Text
 
-    Agent--)Kafka: agent.events (intent, confidence, requires_handoff)
-    Agent-->>Orch: 200 OK (Intent, Confidence, ReplyText, RequiresHandoff)
-    Orch--)Kafka: intent.detected + conversation.state_changed
+note right of BFF
+Commit do offset só ocorre se o forward tiver sucesso.
+Se falhar, faz Seek de volta ao mesmo offset
+e retenta a cada aproximadamente 2 segundos.
+end note
 
-    alt RequiresHandoff = false
-        Orch->>BFF: POST /internal/messages (To, Type: text, Text: replyText)
-        BFF->>BSP: POST /{phone-number-id}/messages (Graph API)
-        BSP->>Cliente: Entrega a resposta (débitos elegíveis apresentados)
-    end
+activate Orch
+Orch -> Orch: Cria ou recupera a sessão da conversa\nTTL 30 min, em memória
+Orch -> Agent: POST /process\nConversationId, JourneyStage, LastIntent, Text
+activate Agent
+Agent -> Tool: MCP list_tools()\nstreamable-HTTP /mcp
+
+loop Uma chamada MCP para cada dado que o agente precisa confirmar
+    Agent -> Tool: call consultar_cliente(cpf)
+    activate Tool
+    Tool -> Reneg: GET /clients/{cpf}
+    activate Reneg
+    Reneg -> Core: ClientApi (:9401)
+    activate Core
+    Core --> Reneg: 200 OK · dados do cliente
+    deactivate Core
+    Reneg --> Tool: 200 OK\nmesmo se o cliente não for encontrado
+    deactivate Reneg
+    Tool ->> Kafka: tool.executed\nCPF mascarado
+    Tool --> Agent: resultado consultar_cliente
+    deactivate Tool
+
+    Agent -> Tool: call consultar_contratos(clientId)
+    activate Tool
+    Tool -> Reneg: GET /clients/{clientId}/contracts
+    activate Reneg
+    Reneg --> Tool: 200 OK · contratos
+    deactivate Reneg
+    Tool ->> Kafka: tool.executed
+    Tool --> Agent: resultado consultar_contratos
+    deactivate Tool
+
+    Agent -> Tool: call consultar_débitos(contractId)
+    activate Tool
+    Tool -> Reneg: GET /contracts/{contractId}/debts
+    activate Reneg
+    Reneg --> Tool: 200 OK · débitos em aberto
+    deactivate Reneg
+    Tool ->> Kafka: tool.executed
+    Tool --> Agent: resultado consultar_débitos
+    deactivate Tool
+
+    Agent -> Tool: call validar_elegibilidade(contractId)
+    activate Tool
+    Tool -> Reneg: GET /contracts/{contractId}/eligibility
+    activate Reneg
+    Reneg -> Core: EligibilityApi (:9402)
+    activate Core
+    Core --> Reneg: 200 OK · eligible / reason
+    deactivate Core
+    Reneg --> Tool: 200 OK\n502 só se Core Bancário estiver inacessível
+    deactivate Reneg
+    Tool ->> Kafka: tool.executed
+    Tool --> Agent: resultado validar_elegibilidade
+    deactivate Tool
+end
+
+Agent ->> Kafka: agent.events\nintent, confidence, requires_handoff
+Agent --> Orch: 200 OK\nIntent, Confidence, ReplyText, RequiresHandoff
+deactivate Agent
+Orch ->> Kafka: intent.detected + conversation.state_changed
+
+alt RequiresHandoff = false
+    Orch -> BFF: POST /internal/messages\nTo, Type text, Text replyText
+    activate BFF
+    BFF -> BSP: POST /{phone-number-id}/messages\nGraph API
+    BSP -> Cliente: Entrega a resposta\ndébitos elegíveis apresentados
+    deactivate BFF
+end
+
+deactivate Orch
+@enduml
 ```
 
 ---
