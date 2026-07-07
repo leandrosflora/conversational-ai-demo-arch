@@ -91,6 +91,29 @@ services:
     networks:
       - conversational-ai
 
+  # One-shot: pre-creates every topic the app services touch. KAFKA_AUTO_CREATE_TOPICS_ENABLE
+  # above only auto-creates on the first *produce*; a consumer (whatsapp-bff's
+  # KafkaWebhookConsumerService) that subscribes before any producer has published is left
+  # racing broker-side auto-creation-on-subscribe, which apache/kafka:3.9.2 in KRaft mode
+  # does not honor even with the client's allow.auto.create.topics=true - it fails the
+  # Subscribe with "Unknown topic or partition" instead. Creating topics up front sidesteps
+  # that race entirely.
+  kafka-init:
+    image: apache/kafka:3.9.2
+    container_name: conversational-ai-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command: >
+      "
+      for topic in channel.message.received channel.message.status channel.webhook.received intent.detected conversation.state_changed agent.events tool.executed; do
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic \"$$topic\" --partitions 1 --replication-factor 1;
+      done
+      "
+    networks:
+      - conversational-ai
+
   jaeger:
     image: jaegertracing/all-in-one:1.60
     container_name: conversational-ai-jaeger
@@ -152,6 +175,159 @@ services:
       - prometheus
       - loki
       - jaeger
+    networks:
+      - conversational-ai
+
+  # --- Application services ---------------------------------------------------------------
+  # Wired in pipeline order (webhook -> BFF -> orchestrator -> agent runtime -> tool service
+  # -> renegotiation-service -> core bank mock). depends_on only orders container start; every
+  # inter-service HttpClient already has AddStandardResilienceHandler (2 retries), so a
+  # dependency that races ahead of the service it calls just retries instead of crash-looping.
+
+  core-bancario-mock:
+    build:
+      context: ../core-bancario-mock
+    container_name: conversational-ai-core-bancario-mock
+    ports:
+      - "9401:9401"
+      - "9402:9402"
+      - "9403:9403"
+      - "9404:9404"
+    networks:
+      - conversational-ai
+
+  renegotiation-service:
+    build:
+      context: ../renegotiation-service
+    container_name: conversational-ai-renegotiation-service
+    ports:
+      - "5266:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ClientApi__BaseUrl: http://core-bancario-mock:9401
+      ClientApi__RetryAttempts: "2"
+      EligibilityApi__BaseUrl: http://core-bancario-mock:9402
+      EligibilityApi__RetryAttempts: "2"
+      ContractingApi__BaseUrl: http://core-bancario-mock:9403
+      ContractingApi__RetryAttempts: "2"
+      FormalizationApi__BaseUrl: http://core-bancario-mock:9404
+      FormalizationApi__RetryAttempts: "2"
+    depends_on:
+      - core-bancario-mock
+    networks:
+      - conversational-ai
+
+  tool-service-renegotiation:
+    build:
+      context: ../tool-service-renegotiation
+    container_name: conversational-ai-tool-service-renegotiation
+    ports:
+      - "8400:8400"
+    environment:
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8400"
+      RENEGOTIATION_SERVICE_BASE_URL: http://renegotiation-service:8080
+      RENEGOTIATION_SERVICE_RETRY_ATTEMPTS: "2"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOOL_EVENTS_TOPIC: tool.executed
+    depends_on:
+      kafka:
+        condition: service_healthy
+      renegotiation-service:
+        condition: service_started
+    networks:
+      - conversational-ai
+
+  agent-runtime-renegotiation:
+    build:
+      context: ../agent-runtime-renegotiation
+    container_name: conversational-ai-agent-runtime-renegotiation
+    ports:
+      - "8100:8100"
+    environment:
+      # No Bedrock credentials yet: MOCK_AGENT_ENABLED defaults to true so /process returns a
+      # canned AgentDecision (keyword-matched in app/agent/mock.py) instead of calling Bedrock,
+      # keeping the whole webhook -> BFF -> orchestrator -> agent runtime -> reply pipeline
+      # testable end-to-end. Set MOCK_AGENT_ENABLED=false in .env once real credentials below
+      # are filled in.
+      MOCK_AGENT_ENABLED: ${MOCK_AGENT_ENABLED:-true}
+      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-anthropic.claude-3-5-sonnet-20241022-v2:0}
+      BEDROCK_REGION: ${BEDROCK_REGION:-us-east-1}
+      # Amazon Bedrock credentials: set these in a .env file next to this compose file
+      # (see .env.example), or leave empty to rely on another AWS credential source
+      # (shared config file mounted into the container, IAM role, etc).
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
+      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      TOOL_SERVICE_MCP_URL: http://tool-service-renegotiation:8400/mcp
+      # knowledge-service has no repo in this workspace yet; searches fail closed with an
+      # "unavailable" message per app/tools/knowledge.py instead of breaking the request.
+      KNOWLEDGE_SERVICE_BASE_URL: ${KNOWLEDGE_SERVICE_BASE_URL:-http://knowledge-service:8500}
+      KNOWLEDGE_SERVICE_RETRY_ATTEMPTS: "2"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_AGENT_EVENTS_TOPIC: agent.events
+      CONFIDENCE_THRESHOLD: "0.6"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      tool-service-renegotiation:
+        condition: service_started
+    networks:
+      - conversational-ai
+
+  conversation-orchestrator:
+    build:
+      context: ../conversation-orchestrator
+    container_name: conversational-ai-conversation-orchestrator
+    ports:
+      - "5268:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      AgentRuntime__BaseUrl: http://agent-runtime-renegotiation:8100
+      ChannelBff__BaseUrl: http://whatsapp-bff:8080
+      # handoff-service and audit-service have no repo in this workspace yet; calls will
+      # fail after 2 retries and are logged, without crashing the orchestrator.
+      HandoffService__BaseUrl: ${HANDOFF_SERVICE_BASE_URL:-http://handoff-service:8200}
+      AuditService__BaseUrl: ${AUDIT_SERVICE_BASE_URL:-http://audit-service:8300}
+      Kafka__BootstrapServers: kafka:9092
+      Kafka__IntentDetectedTopic: intent.detected
+      Kafka__ConversationStateChangedTopic: conversation.state_changed
+      Session__TtlMinutes: "30"
+    depends_on:
+      kafka:
+        condition: service_healthy
+      agent-runtime-renegotiation:
+        condition: service_started
+    networks:
+      - conversational-ai
+
+  whatsapp-bff:
+    build:
+      context: ../whatsapp-bff
+    container_name: conversational-ai-whatsapp-bff
+    ports:
+      - "5153:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      # WhatsApp Cloud API credentials: set these in a .env file next to this compose file
+      # (see .env.example). AppSecret/VerifyToken default to the same dev values used by
+      # appsettings.Development.json so the webhook signature check works out of the box.
+      WhatsApp__PhoneNumberId: ${WHATSAPP_PHONE_NUMBER_ID:-}
+      WhatsApp__AccessToken: ${WHATSAPP_ACCESS_TOKEN:-}
+      WhatsApp__AppSecret: ${WHATSAPP_APP_SECRET:-local-dev-app-secret}
+      WhatsApp__VerifyToken: ${WHATSAPP_VERIFY_TOKEN:-local-dev-verify-token}
+      WhatsApp__GraphApiBaseUrl: https://graph.facebook.com/v20.0
+      Orchestrator__BaseUrl: http://conversation-orchestrator:8080
+      Kafka__BootstrapServers: kafka:9092
+      Kafka__MessageReceivedTopic: channel.message.received
+      Kafka__MessageStatusTopic: channel.message.status
+      Kafka__RawWebhookReceivedTopic: channel.webhook.received
+      Kafka__WebhookConsumerGroupId: whatsapp-bff-webhook-consumer
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      conversation-orchestrator:
+        condition: service_started
     networks:
       - conversational-ai
 

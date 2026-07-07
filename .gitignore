@@ -7,3 +7,5 @@
 /.vs/conversational-ai-demo-arch/v17/TestStore/0
 /.vs/conversational-ai-demo-arch/v17
 /.vs
+.claude/
+.env
