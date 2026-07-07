@@ -1,0 +1,507 @@
+{
+  "info": {
+    "name": "Conversational AI - Renegotiation Microservices",
+    "description": "Requests for every microservice in this workspace: whatsapp-bff, conversation-orchestrator, renegotiation-service, core-bancario-mock, agent-runtime-renegotiation, tool-service-renegotiation. Base URLs default to the ports docker-compose.yml (conversational-ai-demo-arch) publishes to localhost - import local-docker-compose.postman_environment.json (or just use the collection variables as-is) and run `docker compose up -d` first.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "whatsapp_bff_url", "value": "http://localhost:5153" },
+    { "key": "orchestrator_url", "value": "http://localhost:5268" },
+    { "key": "renegotiation_service_url", "value": "http://localhost:5266" },
+    { "key": "core_bancario_client_url", "value": "http://localhost:9401" },
+    { "key": "core_bancario_eligibility_url", "value": "http://localhost:9402" },
+    { "key": "core_bancario_contracting_url", "value": "http://localhost:9403" },
+    { "key": "core_bancario_formalization_url", "value": "http://localhost:9404" },
+    { "key": "agent_runtime_url", "value": "http://localhost:8100" },
+    { "key": "tool_service_url", "value": "http://localhost:8400" },
+    { "key": "whatsapp_app_secret", "value": "local-dev-app-secret" },
+    { "key": "whatsapp_verify_token", "value": "local-dev-verify-token" },
+    { "key": "sample_cpf", "value": "12345678900" },
+    { "key": "sample_client_id", "value": "client-001" },
+    { "key": "sample_contract_id", "value": "contract-001" },
+    { "key": "sample_simulation_id", "value": "sim-001" },
+    { "key": "sample_agreement_id", "value": "agr-001" },
+    { "key": "sample_conversation_id", "value": "5511999990000" }
+  ],
+  "item": [
+    {
+      "name": "whatsapp-bff (:5153)",
+      "description": "Channel BFF: receives WhatsApp Cloud API webhooks, forwards inbound messages to conversation-orchestrator via Kafka, and exposes an internal endpoint the orchestrator calls to send replies back through the WhatsApp Cloud API.",
+      "item": [
+        {
+          "name": "Webhook verification (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{whatsapp_bff_url}}/webhooks/whatsapp?hub.mode=subscribe&hub.verify_token={{whatsapp_verify_token}}&hub.challenge=challenge-123",
+              "host": ["{{whatsapp_bff_url}}"],
+              "path": ["webhooks", "whatsapp"],
+              "query": [
+                { "key": "hub.mode", "value": "subscribe" },
+                { "key": "hub.verify_token", "value": "{{whatsapp_verify_token}}" },
+                { "key": "hub.challenge", "value": "challenge-123" }
+              ]
+            },
+            "description": "Meta's webhook handshake. Returns 200 with the raw challenge string echoed back when hub.verify_token matches WhatsApp:VerifyToken; 403 otherwise."
+          }
+        },
+        {
+          "name": "Webhook - inbound text message (POST)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "// WhatsApp signs every webhook delivery with HMAC-SHA256 over the raw body,",
+                  "// keyed by WhatsApp:AppSecret. whatsapp-bff rejects the request with 401 if",
+                  "// X-Hub-Signature-256 doesn't match, so compute it here before sending.",
+                  "const secret = pm.collectionVariables.get('whatsapp_app_secret');",
+                  "const body = pm.request.body.raw;",
+                  "const hash = CryptoJS.HmacSHA256(body, secret).toString(CryptoJS.enc.Hex);",
+                  "pm.request.headers.upsert({ key: 'X-Hub-Signature-256', value: 'sha256=' + hash });"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"object\": \"whatsapp_business_account\",\n  \"entry\": [\n    {\n      \"id\": \"215589313241560883\",\n      \"changes\": [\n        {\n          \"value\": {\n            \"messaging_product\": \"whatsapp\",\n            \"metadata\": {\n              \"display_phone_number\": \"15551797781\",\n              \"phone_number_id\": \"7794189252778687\"\n            },\n            \"contacts\": [\n              {\n                \"profile\": { \"name\": \"Jessica Laverdetman\" },\n                \"wa_id\": \"13557825698\"\n              }\n            ],\n            \"messages\": [\n              {\n                \"from\": \"17863559966\",\n                \"id\": \"wamid.TEST_TEXT_MESSAGE\",\n                \"timestamp\": \"1758254144\",\n                \"text\": { \"body\": \"Quero renegociar minha divida\" },\n                \"type\": \"text\"\n              }\n            ]\n          },\n          \"field\": \"messages\"\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{whatsapp_bff_url}}/webhooks/whatsapp",
+              "host": ["{{whatsapp_bff_url}}"],
+              "path": ["webhooks", "whatsapp"]
+            },
+            "description": "Real WhatsApp Cloud API delivery shape. Persisted to Kafka (channel.webhook.received) and, once consumed, forwarded to conversation-orchestrator's POST /messages. Returns 200 as soon as it's durably queued - it does not wait for downstream processing."
+          }
+        },
+        {
+          "name": "Send outbound message (POST /internal/messages)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"To\": \"17863559966\",\n  \"Type\": \"text\",\n  \"Text\": \"Ola! Vamos falar sobre a renegociacao da sua divida.\"\n}"
+            },
+            "url": {
+              "raw": "{{whatsapp_bff_url}}/internal/messages",
+              "host": ["{{whatsapp_bff_url}}"],
+              "path": ["internal", "messages"]
+            },
+            "description": "Internal endpoint conversation-orchestrator's ChannelReplyClient calls to relay an agent reply to the customer. Forwards to the real WhatsApp Cloud API - without a valid WhatsApp:AccessToken/PhoneNumberId this returns 502 (upstream rejected the send), which is expected until real credentials are configured."
+          }
+        }
+      ]
+    },
+    {
+      "name": "conversation-orchestrator (:5268)",
+      "description": "Owns conversation/session state, calls agent-runtime-renegotiation for a decision, and routes the outcome to a channel reply, a human handoff, or both, plus audit/event publishing.",
+      "item": [
+        {
+          "name": "Ingest inbound text message (POST /messages)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"MessageId\": \"wamid.TEST_TEXT_MESSAGE\",\n  \"From\": \"17863559966\",\n  \"ConversationId\": \"{{sample_conversation_id}}\",\n  \"Type\": 0,\n  \"Text\": \"Quero renegociar minha divida\",\n  \"Interactive\": null,\n  \"RawPayload\": null,\n  \"ReceivedAt\": \"2026-07-07T12:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{orchestrator_url}}/messages",
+              "host": ["{{orchestrator_url}}"],
+              "path": ["messages"]
+            },
+            "description": "Type is the ChannelMessageType enum as a plain integer: 0=Text, 1=Interactive, 2=Unsupported (matches whatsapp-bff's own serialization). Returns 202 Accepted immediately; the actual agent-runtime call, reply, and handoff/audit calls happen inside the request but their outcomes are only visible in logs, not in this response body."
+            }
+        },
+        {
+          "name": "Ingest inbound interactive reply (POST /messages)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"MessageId\": \"wamid.TEST_INTERACTIVE_REPLY\",\n  \"From\": \"17863559966\",\n  \"ConversationId\": \"{{sample_conversation_id}}\",\n  \"Type\": 1,\n  \"Text\": null,\n  \"Interactive\": { \"Id\": \"option_renegociar\", \"Title\": \"Quero renegociar\" },\n  \"RawPayload\": null,\n  \"ReceivedAt\": \"2026-07-07T12:00:00Z\"\n}"
+            },
+            "url": {
+              "raw": "{{orchestrator_url}}/messages",
+              "host": ["{{orchestrator_url}}"],
+              "path": ["messages"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "agent-runtime-renegotiation (:8100, Python)",
+      "description": "Runs the Bedrock/Strands agent (or the keyword-based mock when MOCK_AGENT_ENABLED=true) and returns a structured AgentDecision. Wire contract is PascalCase to match .NET's default JSON serialization.",
+      "item": [
+        {
+          "name": "Process - renegotiation request",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ConversationId\": \"{{sample_conversation_id}}\",\n  \"MessageType\": \"Text\",\n  \"Text\": \"Quero renegociar minha divida\",\n  \"JourneyStage\": \"initial\",\n  \"LastIntent\": null\n}"
+            },
+            "url": {
+              "raw": "{{agent_runtime_url}}/process",
+              "host": ["{{agent_runtime_url}}"],
+              "path": ["process"]
+            },
+            "description": "In mock mode (app/agent/mock.py), text containing \"renegoc\" returns intent=renegotiation_request with RequiresHandoff=false."
+          }
+        },
+        {
+          "name": "Process - debt inquiry",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ConversationId\": \"{{sample_conversation_id}}\",\n  \"MessageType\": \"Text\",\n  \"Text\": \"Quanto eu devo de boleto atrasado?\",\n  \"JourneyStage\": \"initial\",\n  \"LastIntent\": null\n}"
+            },
+            "url": {
+              "raw": "{{agent_runtime_url}}/process",
+              "host": ["{{agent_runtime_url}}"],
+              "path": ["process"]
+            },
+            "description": "In mock mode, debt/boleto/parcela keywords return intent=debt_inquiry."
+          }
+        },
+        {
+          "name": "Process - human handoff request",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ConversationId\": \"{{sample_conversation_id}}\",\n  \"MessageType\": \"Text\",\n  \"Text\": \"Quero falar com um atendente humano\",\n  \"JourneyStage\": \"initial\",\n  \"LastIntent\": null\n}"
+            },
+            "url": {
+              "raw": "{{agent_runtime_url}}/process",
+              "host": ["{{agent_runtime_url}}"],
+              "path": ["process"]
+            },
+            "description": "In mock mode, atendente/humano keywords force RequiresHandoff=true, HandoffReason=customer_requested_human."
+          }
+        },
+        {
+          "name": "Process - unmatched text (greeting fallback)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"ConversationId\": \"{{sample_conversation_id}}\",\n  \"MessageType\": \"Text\",\n  \"Text\": \"Oi, bom dia\",\n  \"JourneyStage\": null,\n  \"LastIntent\": null\n}"
+            },
+            "url": {
+              "raw": "{{agent_runtime_url}}/process",
+              "host": ["{{agent_runtime_url}}"],
+              "path": ["process"]
+            }
+          }
+        },
+        {
+          "name": "Swagger / OpenAPI docs (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{agent_runtime_url}}/docs",
+              "host": ["{{agent_runtime_url}}"],
+              "path": ["docs"]
+            },
+            "description": "Sanity check that the service is up."
+          }
+        }
+      ]
+    },
+    {
+      "name": "renegotiation-service (:5266)",
+      "description": "Core renegotiation domain logic: client/contract/debt lookups, eligibility, simulation, and formalization. Proxies to core-bancario-mock's 4 ports.",
+      "item": [
+        {
+          "name": "Get client by CPF",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{renegotiation_service_url}}/clients/{{sample_cpf}}",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["clients", "{{sample_cpf}}"]
+            }
+          }
+        },
+        {
+          "name": "Get client by CPF - not found (cpf=00000000000)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{renegotiation_service_url}}/clients/00000000000",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["clients", "00000000000"]
+            },
+            "description": "core-bancario-mock's negative-path trigger: this exact CPF returns 404."
+          }
+        },
+        {
+          "name": "Get contracts by client",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{renegotiation_service_url}}/clients/{{sample_client_id}}/contracts",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["clients", "{{sample_client_id}}", "contracts"]
+            }
+          }
+        },
+        {
+          "name": "Get debts by contract",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{renegotiation_service_url}}/contracts/{{sample_contract_id}}/debts",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["contracts", "{{sample_contract_id}}", "debts"]
+            }
+          }
+        },
+        {
+          "name": "Get eligibility by contract",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{renegotiation_service_url}}/contracts/{{sample_contract_id}}/eligibility",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["contracts", "{{sample_contract_id}}", "eligibility"]
+            }
+          }
+        },
+        {
+          "name": "Get eligibility - not eligible (contractId contains 'inelegivel')",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{renegotiation_service_url}}/contracts/contract-inelegivel-001/eligibility",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["contracts", "contract-inelegivel-001", "eligibility"]
+            },
+            "description": "core-bancario-mock's negative-path trigger: Eligible=false, Reason=cliente_inadimplente_critico."
+          }
+        },
+        {
+          "name": "Simulate renegotiation proposal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"installments\": 12,\n  \"discount_percentage\": 15.0\n}"
+            },
+            "url": {
+              "raw": "{{renegotiation_service_url}}/contracts/{{sample_contract_id}}/simulations",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["contracts", "{{sample_contract_id}}", "simulations"]
+            }
+          }
+        },
+        {
+          "name": "Simulate - not possible (installments out of range)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"installments\": 60,\n  \"discount_percentage\": 15.0\n}"
+            },
+            "url": {
+              "raw": "{{renegotiation_service_url}}/contracts/{{sample_contract_id}}/simulations",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["contracts", "{{sample_contract_id}}", "simulations"]
+            },
+            "description": "core-bancario-mock's negative-path trigger: installments <= 0 or > 48 returns Possible=false."
+          }
+        },
+        {
+          "name": "Confirm agreement from simulation",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "" },
+            "url": {
+              "raw": "{{renegotiation_service_url}}/simulations/{{sample_simulation_id}}/confirmations",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["simulations", "{{sample_simulation_id}}", "confirmations"]
+            }
+          }
+        },
+        {
+          "name": "Confirm agreement - simulation expired",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "" },
+            "url": {
+              "raw": "{{renegotiation_service_url}}/simulations/sim-expired-001/confirmations",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["simulations", "sim-expired-001", "confirmations"]
+            },
+            "description": "core-bancario-mock's negative-path trigger: simulationId containing 'expired' returns Confirmed=false, Reason=simulation_expired."
+          }
+        },
+        {
+          "name": "Get agreement document",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{renegotiation_service_url}}/agreements/{{sample_agreement_id}}/document",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["agreements", "{{sample_agreement_id}}", "document"]
+            }
+          }
+        },
+        {
+          "name": "Get agreement document - not ready (agreementId contains 'pendente')",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{renegotiation_service_url}}/agreements/agr-pendente-001/document",
+              "host": ["{{renegotiation_service_url}}"],
+              "path": ["agreements", "agr-pendente-001", "document"]
+            },
+            "description": "core-bancario-mock's negative-path trigger: agreementId containing 'pendente' returns Available=false, Reason=document_not_ready."
+          }
+        }
+      ]
+    },
+    {
+      "name": "core-bancario-mock (:9401-9404)",
+      "description": "Stands in for the 4 real bank-core APIs renegotiation-service depends on. Same route shapes as renegotiation-service, hit directly here for isolated testing. Always returns 200 for 'negative business' outcomes (never 4xx) - see each request's description for the trigger value.",
+      "item": [
+        {
+          "name": "ClientApi (:9401) - Get client",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{core_bancario_client_url}}/clients/{{sample_cpf}}",
+              "host": ["{{core_bancario_client_url}}"],
+              "path": ["clients", "{{sample_cpf}}"]
+            }
+          }
+        },
+        {
+          "name": "ClientApi (:9401) - Get contracts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{core_bancario_client_url}}/clients/{{sample_client_id}}/contracts",
+              "host": ["{{core_bancario_client_url}}"],
+              "path": ["clients", "{{sample_client_id}}", "contracts"]
+            }
+          }
+        },
+        {
+          "name": "ClientApi (:9401) - Get debts",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{core_bancario_client_url}}/contracts/{{sample_contract_id}}/debts",
+              "host": ["{{core_bancario_client_url}}"],
+              "path": ["contracts", "{{sample_contract_id}}", "debts"]
+            }
+          }
+        },
+        {
+          "name": "EligibilityApi (:9402) - Check eligibility",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{core_bancario_eligibility_url}}/contracts/{{sample_contract_id}}/eligibility",
+              "host": ["{{core_bancario_eligibility_url}}"],
+              "path": ["contracts", "{{sample_contract_id}}", "eligibility"]
+            }
+          }
+        },
+        {
+          "name": "ContractingApi (:9403) - Simulate proposal",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"installments\": 12,\n  \"discount_percentage\": 15.0\n}"
+            },
+            "url": {
+              "raw": "{{core_bancario_contracting_url}}/contracts/{{sample_contract_id}}/simulations",
+              "host": ["{{core_bancario_contracting_url}}"],
+              "path": ["contracts", "{{sample_contract_id}}", "simulations"]
+            }
+          }
+        },
+        {
+          "name": "FormalizationApi (:9404) - Confirm agreement",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "body": { "mode": "raw", "raw": "" },
+            "url": {
+              "raw": "{{core_bancario_formalization_url}}/simulations/{{sample_simulation_id}}/confirmations",
+              "host": ["{{core_bancario_formalization_url}}"],
+              "path": ["simulations", "{{sample_simulation_id}}", "confirmations"]
+            }
+          }
+        },
+        {
+          "name": "FormalizationApi (:9404) - Get document",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{core_bancario_formalization_url}}/agreements/{{sample_agreement_id}}/document",
+              "host": ["{{core_bancario_formalization_url}}"],
+              "path": ["agreements", "{{sample_agreement_id}}", "document"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "tool-service-renegotiation (:8400, Python)",
+      "description": "MCP server (streamable-http) exposing 7 governed tools to agent-runtime-renegotiation. Not a plain REST API - a real call needs an MCP client session (initialize, then tools/call over the MCP JSON-RPC framing), which Postman doesn't speak out of the box. The request below only confirms the server is up.",
+      "item": [
+        {
+          "name": "MCP endpoint reachability check (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{tool_service_url}}/mcp",
+              "host": ["{{tool_service_url}}"],
+              "path": ["mcp"]
+            },
+            "description": "Expect 406 Not Acceptable - that's the MCP server correctly rejecting a plain GET without the Accept/session headers an MCP client would send, which confirms it's listening. To exercise the actual tools (consultar_cliente, simular_proposta, etc.), use an MCP-aware client pointed at agent-runtime-renegotiation instead, or a proper MCP Inspector/client rather than Postman."
+          }
+        }
+      ]
+    }
+  ]
+}

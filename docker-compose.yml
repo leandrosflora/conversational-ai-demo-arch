@@ -114,6 +114,20 @@ services:
     networks:
       - conversational-ai
 
+  kafka-ui:
+    image: provectuslabs/kafka-ui:v0.7.2
+    container_name: conversational-ai-kafka-ui
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: local
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - conversational-ai
+
   jaeger:
     image: jaegertracing/all-in-one:1.60
     container_name: conversational-ai-jaeger
@@ -137,6 +151,22 @@ services:
     volumes:
       - ./config/loki/local-config.yml:/etc/loki/local-config.yml:ro
       - loki-data:/loki
+    networks:
+      - conversational-ai
+
+  # Loki only stores what's pushed to it; nothing else in this stack ships container stdout
+  # to it on its own. Promtail discovers every container via the Docker socket and tails
+  # their logs, labeling each entry with its compose service name so Explore/Grafana can
+  # filter by {service="whatsapp-bff"} etc.
+  promtail:
+    image: grafana/promtail:2.9.8
+    container_name: conversational-ai-promtail
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./config/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
     networks:
       - conversational-ai
 
@@ -193,6 +223,15 @@ services:
       - "9402:9402"
       - "9403:9403"
       - "9404:9404"
+    networks:
+      - conversational-ai
+
+  audit-service-mock:
+    build:
+      context: ../audit-service-mock
+    container_name: conversational-ai-audit-service-mock
+    ports:
+      - "8300:8300"
     networks:
       - conversational-ai
 
@@ -285,10 +324,11 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       AgentRuntime__BaseUrl: http://agent-runtime-renegotiation:8100
       ChannelBff__BaseUrl: http://whatsapp-bff:8080
-      # handoff-service and audit-service have no repo in this workspace yet; calls will
-      # fail after 2 retries and are logged, without crashing the orchestrator.
+      # handoff-service has no repo in this workspace yet; calls will fail after 2 retries and
+      # are logged, without crashing the orchestrator. audit-service-mock (below) covers Audit
+      # Service so that path succeeds instead of just being tolerated.
       HandoffService__BaseUrl: ${HANDOFF_SERVICE_BASE_URL:-http://handoff-service:8200}
-      AuditService__BaseUrl: ${AUDIT_SERVICE_BASE_URL:-http://audit-service:8300}
+      AuditService__BaseUrl: http://audit-service-mock:8300
       Kafka__BootstrapServers: kafka:9092
       Kafka__IntentDetectedTopic: intent.detected
       Kafka__ConversationStateChangedTopic: conversation.state_changed
@@ -297,6 +337,8 @@ services:
       kafka:
         condition: service_healthy
       agent-runtime-renegotiation:
+        condition: service_started
+      audit-service-mock:
         condition: service_started
     networks:
       - conversational-ai
