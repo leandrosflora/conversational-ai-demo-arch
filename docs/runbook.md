@@ -1,6 +1,6 @@
 # Runbook — Ambiente Local
 
-Guia operacional para subir, verificar e depurar o ambiente local completo da Plataforma de IA Conversacional: infraestrutura (Docker Compose) + os 5 serviços de aplicação implementados até o momento + o mock do Core Bancário.
+Guia operacional para subir, verificar e depurar o ambiente local completo da Plataforma de IA Conversacional: infraestrutura (Docker Compose) + os 5 serviços de aplicação implementados até o momento + os mocks do Core Bancário e do Audit Service.
 
 Repositórios (todos irmãos, na raiz do workspace `whatsapp/`):
 
@@ -12,9 +12,10 @@ Repositórios (todos irmãos, na raiz do workspace `whatsapp/`):
 | Tool Service (MCP) | `tool-service-renegotiation/` | Python / MCP (FastMCP) | não |
 | Renegotiation Service | `renegotiation-service/` | .NET 8 | não |
 | Core Bancário (mock) | `core-bancario-mock/` | .NET 8 | não |
+| Audit Service (mock) | `audit-service-mock/` | .NET 8 | não |
 | Infraestrutura | `conversational-ai-demo-arch/` | Docker Compose | sim |
 
-Nenhum dos serviços de aplicação tem Dockerfile ainda — todos rodam localmente via `dotnet run` / `uvicorn`, apontando para a infraestrutura em containers.
+Todos os serviços de aplicação já têm `Dockerfile` e estão wireados no `docker-compose.yml` (`build: context: ../<pasta>`), inclusive uns aos outros via `depends_on` — ou seja, `docker compose up -d` (seção 2) sobe o stack **inteiro**, apps incluídos, não só a infraestrutura. Este runbook documenta o fluxo alternativo de dev local (seção 3): rodar cada serviço via `dotnet run`/`uvicorn` fora do Docker, apontando para a infraestrutura em containers — útil para depurar/debugar um serviço de cada vez sem rebuild de imagem a cada mudança de código. Ao rodar os dois modos ao mesmo tempo, cuidado com colisão de porta host (as portas mapeadas no compose para os apps coincidem com as usadas pelo `dotnet run`/`uvicorn` local).
 
 ---
 
@@ -23,7 +24,7 @@ Nenhum dos serviços de aplicação tem Dockerfile ainda — todos rodam localme
 - Docker Desktop (Docker Engine 20.10+, Compose v2) rodando.
 - .NET 8 SDK (`dotnet --version`).
 - Python 3.12 (cada serviço Python tem seu próprio `.venv` já criado em `agent-runtime-renegotiation/.venv` e `tool-service-renegotiation/.venv`). **Não use Python 3.14**: o debugger do Visual Studio 2022 (PTVS/debugpy) ainda não suporta as mudanças internas do módulo `threading` no 3.14 (`AttributeError: '_MainThread' object has no attribute '_handle'` ao encerrar o processo) — [issue conhecida](https://github.com/microsoft/debugpy/issues/1893), corrigida upstream mas ainda não lançada pelo VS.
-- Portas livres no host: `5432, 6379, 9092, 29092, 9090, 16686, 27017, 3001, 3100, 4317, 4318, 5153, 8000, 8100, 8400, 9400, 9401, 9402, 9403, 9404`.
+- Portas livres no host: `5432, 6379, 9092, 29092, 9090, 16686, 27017, 3001, 3100, 4317, 4318, 5153, 8000, 8100, 8300, 8400, 9400, 9401, 9402, 9403, 9404`.
 
 ---
 
@@ -134,18 +135,35 @@ source .venv/Scripts/activate
 uvicorn app.main:app --host 127.0.0.1 --port 8100
 ```
 
-Expõe `POST /process`. Chama Bedrock (precisa de credenciais AWS reais — sem elas, cai no fallback de handoff), o Tool Service via MCP (`:8400`, seção 3.2) e a `KnowledgeService` assumida (`:8500`, inexistente).
+Expõe `POST /process`. Chama Bedrock (precisa de credenciais AWS reais — sem elas, a inferência falha e o serviço cai no fallback de handoff com motivo `agent_runtime_unavailable`), o Tool Service via MCP (`:8400`, seção 3.2) e a `KnowledgeService` assumida (`:8500`, inexistente).
 
-### 3.4 Conversation Orchestrator (.NET) — porta `8000`
+Para testar o fluxo completo sem credenciais AWS, defina `MOCK_AGENT_ENABLED=true` (variável de ambiente, ver `Settings.mock_agent_enabled` em `app/config.py`) antes de subir o serviço:
+
+```bash
+MOCK_AGENT_ENABLED=true uvicorn app.main:app --host 127.0.0.1 --port 8100
+```
+
+Isso substitui a chamada ao Bedrock por uma decisão determinística por palavra-chave (`app/agent/mock.py`) — útil para exercitar webhook → BFF → Orchestrator → Agent Runtime → resposta de ponta a ponta sem depender do modelo real. **Cuidado com a confusão de nomes:** `agent_runtime_unavailable` é usado tanto pelo Agent Runtime (quando a chamada ao Bedrock falha, `RequiresHandoff=true` mas `HTTP 200`) quanto pelo sentinel do lado do Orchestrator (`AgentRuntimeResult.Unavailable()`, quando o processo nem responde) — os dois têm a mesma string de motivo mas origens diferentes; veja o log de qual dos dois serviços para diagnosticar.
+
+### 3.4 Audit Service (mock, .NET) — porta `8300`
+
+```bash
+cd audit-service-mock
+dotnet run
+```
+
+`Program.cs` já fixa a porta via `UseUrls("http://0.0.0.0:8300")`, então não precisa de `--urls`. Aceita qualquer `POST /journey-events` e responde sempre `200 OK`, logando o evento recebido — elimina o warning "Failed to record journey audit event" que o `conversation-orchestrator` loga quando esse downstream está inacessível. Também está wireado no `docker-compose.yml` (serviço `audit-service-mock`) para quem sobe o stack containerizado.
+
+### 3.5 Conversation Orchestrator (.NET) — porta `8000`
 
 ```bash
 cd conversation-orchestrator
 dotnet run --urls http://localhost:8000
 ```
 
-Expõe `POST /messages`. Chama `AgentRuntime` (`:8100`, seção 3.3), `ChannelBff` (`:5153`, seção 3.5), e as ainda-inexistentes `HandoffService` (`:8200`) e `AuditService` (`:8300`).
+Expõe `POST /messages`. Chama `AgentRuntime` (`:8100`, seção 3.3), `ChannelBff` (`:5153`, seção 3.6), `AuditService` (`:8300`, servida pelo mock da seção 3.4) e a ainda-inexistente `HandoffService` (`:8200`).
 
-### 3.5 Channel BFF (.NET) — porta `5153` (padrão do `dotnet run`)
+### 3.6 Channel BFF (.NET) — porta `5153` (padrão do `dotnet run`)
 
 ```bash
 cd whatsapp-bff
@@ -157,7 +175,7 @@ Expõe `POST /webhooks/whatsapp` (webhook do WhatsApp) e `POST /internal/message
 A entrega ao Orchestrator **não** é mais uma chamada síncrona dentro do próprio request do webhook. O fluxo real é:
 
 1. `POST /webhooks/whatsapp` valida a assinatura HMAC, deduplica por `messageId` e publica o payload bruto no tópico Kafka `channel.webhook.received` (chave de partição = telefone do cliente). Só devolve `200 OK` **depois** que essa publicação é confirmada — se o Kafka estiver fora do ar, devolve `503` para que a Meta reentregue.
-2. Um `BackgroundService` interno ao mesmo processo (`KafkaWebhookConsumerService`, grupo de consumidor `whatsapp-bff-webhook-consumer`) lê esse tópico e é quem de fato chama `POST {Orchestrator:BaseUrl}/messages` (`:8000`, seção 3.4).
+2. Um `BackgroundService` interno ao mesmo processo (`KafkaWebhookConsumerService`, grupo de consumidor `whatsapp-bff-webhook-consumer`) lê esse tópico e é quem de fato chama `POST {Orchestrator:BaseUrl}/messages` (`:8000`, seção 3.5).
 3. O commit do offset só acontece se **todas** as mensagens daquela entrega forem encaminhadas com sucesso. Se o Orchestrator estiver fora do ar, o consumer dá `Seek` de volta para o mesmo offset e tenta de novo a cada ~2s — ou seja, uma indisponibilidade do Orchestrator trava o processamento desse tópico (backpressure), em vez de perder a mensagem.
 
 Kafka substituiu o que antes era uma fila em memória entre o webhook e o Orchestrator: agora a durabilidade sobrevive a um restart/crash do `whatsapp-bff`.
@@ -169,12 +187,12 @@ Kafka substituiu o que antes era uma fila em memória entre o webhook e o Orches
 | Serviço | Porta | Downstream que chama |
 |---|---|---|
 | whatsapp-bff | `5153` | Kafka (`9092`/`29092`, tópico `channel.webhook.received`) → consumido pelo próprio processo → Orchestrator (`8000`) |
-| conversation-orchestrator | `8000` | AgentRuntime (`8100`), ChannelBff (`5153`), HandoffService (`8200`)*, AuditService (`8300`)* |
+| conversation-orchestrator | `8000` | AgentRuntime (`8100`), ChannelBff (`5153`), AuditService (`8300`, servida pelo mock da seção 3.4), HandoffService (`8200`)* |
 | agent-runtime-renegotiation | `8100` | Bedrock (AWS)*, ToolService MCP (`8400`), KnowledgeService (`8500`)* |
 | tool-service-renegotiation | `8400` | RenegotiationService (`9400`) |
 | renegotiation-service | `9400` | ClientApi (`9401`), EligibilityApi (`9402`), ContractingApi (`9403`), FormalizationApi (`9404`) — todas servidas pelo `core-bancario-mock` (seção 3.0) |
 
-`*` = dependência **assumida**, ainda não implementada neste workspace. Erros de indisponibilidade nesses pontos (502, handoff automático, timeouts) são o comportamento esperado e documentado em cada change arquivada (`openspec/changes/archive/`) — todo serviço foi construído para degradar graciosamente (nunca derrubar o processo) quando esses downstream não respondem. As 4 APIs do Core Bancário já têm mock (seção 3.0) — sem ele no ar, o comportamento de degradação (502) continua sendo o esperado.
+`*` = dependência **assumida**, ainda não implementada neste workspace. Erros de indisponibilidade nesses pontos (502, handoff automático, timeouts) são o comportamento esperado e documentado em cada change arquivada (`openspec/changes/archive/`) — todo serviço foi construído para degradar graciosamente (nunca derrubar o processo) quando esses downstream não respondem. As 4 APIs do Core Bancário já têm mock (seção 3.0) e o Audit Service também (`audit-service-mock`, seção 3.4) — sem eles no ar, o comportamento de degradação (502 / warning engolido, respectivamente) continua sendo o esperado.
 
 `whatsapp-bff` é o único serviço que depende do Kafka da infraestrutura (seção 2) para funcionar, e não só para publicar eventos de auditoria: sem Kafka no ar, o webhook responde `503` (não aceita a entrega) em vez de `200`.
 
@@ -217,6 +235,12 @@ asyncio.run(main())
 curl "http://localhost:9400/contracts/contract-1/eligibility"
 # Esperado: 200 OK, {"eligible":true,"reason":null}
 # Sem o mock no ar: 502 Bad Gateway — comportamento correto, não é bug
+
+# 5. Audit Service (mock, seção 3.4)
+curl -X POST http://localhost:8300/journey-events \
+  -H "Content-Type: application/json" \
+  -d '{"conversationId":"5511999990000","intent":null,"outcome":"handoff","timestamp":"2026-01-01T00:00:00Z"}'
+# Esperado: 200 OK
 ```
 
 ### Verificando a durabilidade do webhook via Kafka
@@ -296,13 +320,16 @@ Só executam com o volume **vazio** na primeira subida. Ver seção 2 → "Inici
 Verifique a tabela da seção 3 ("Mapa de portas"): se o downstream está marcado com `*`, ele é uma dependência **assumida** e ainda não implementada — o comportamento correto de cada serviço é degradar (502, handoff, fallback), nunca cair. Não é um bug a menos que o serviço em si trave ou pare de responder.
 
 ### Webhook aceito (`200 OK`) mas a mensagem nunca chega no Orchestrator
-Desde que a fila em memória do `whatsapp-bff` foi substituída pelo Kafka (seção 3.5), isso normalmente significa que o `conversation-orchestrator` está fora do ar (ou inacessível) e o `KafkaWebhookConsumerService` está retentando a mesma mensagem em loop (por design — ver seção 3.5). Confira o log do `whatsapp-bff` por `Forward to Orchestrator failed ... retrying the same offset`; suba o Orchestrator (seção 3.4) e o processamento retoma sozinho a partir da mesma mensagem, sem precisar reenviar o webhook. Se o webhook responder `503` em vez de `200`, o problema é o Kafka em si (broker fora do ar) — confira `docker compose ps` (seção 2).
+Desde que a fila em memória do `whatsapp-bff` foi substituída pelo Kafka (seção 3.6), isso normalmente significa que o `conversation-orchestrator` está fora do ar (ou inacessível) e o `KafkaWebhookConsumerService` está retentando a mesma mensagem em loop (por design — ver seção 3.6). Confira o log do `whatsapp-bff` por `Forward to Orchestrator failed ... retrying the same offset`; suba o Orchestrator (seção 3.5) e o processamento retoma sozinho a partir da mesma mensagem, sem precisar reenviar o webhook. Se o webhook responder `503` em vez de `200`, o problema é o Kafka em si (broker fora do ar) — confira `docker compose ps` (seção 2).
+
+### Agent Runtime responde `200 OK` mas com `HandoffReason: "agent_runtime_unavailable"`
+Isso **não** é o Orchestrator falhando em alcançar o Agent Runtime (esse caso não teria resposta `200` nenhuma) — é o próprio `agent-runtime-renegotiation` respondendo normalmente, mas caindo no fallback de `invoke_agent` porque a chamada ao Bedrock falhou (credenciais AWS ausentes/inválidas, por exemplo). Ver seção 3.3 para subir com `MOCK_AGENT_ENABLED=true` e evitar depender do Bedrock localmente.
 
 ---
 
 ## 7. O que ainda não existe
 
-- **Memory Service**, **Knowledge Service**, **Audit Service**, **Handoff Service**: containers/serviços não implementados neste workspace; PostgreSQL e MongoDB já têm o schema pronto para quando forem construídos.
+- **Memory Service**, **Knowledge Service**, **Handoff Service**: containers/serviços não implementados neste workspace; PostgreSQL e MongoDB já têm o schema pronto para quando forem construídos.
 - **Core Bancário real** (Client/Eligibility/Contracting/Formalization APIs): sistema externo de fato, fora do escopo — existe apenas um **mock** local (`core-bancario-mock/`, seção 3.0) com dados fake, para permitir testar o fluxo completo sem `502`.
-- **Dockerfiles** para os serviços de aplicação — hoje só rodam via `dotnet run`/`uvicorn` local.
-- Credenciais reais da AWS Bedrock (necessárias para o Agent Runtime raciocinar de verdade em vez de cair no fallback de handoff).
+- **Audit Service real**: idem — existe apenas um **mock** local (`audit-service-mock/`, seção 3.4) que aceita qualquer `POST /journey-events` e responde `200 OK` sem persistir nada, só para eliminar o warning de indisponibilidade durante testes locais.
+- Credenciais reais da AWS Bedrock (necessárias para o Agent Runtime raciocinar de verdade em vez de cair no fallback de handoff) — use `MOCK_AGENT_ENABLED=true` (seção 3.3) enquanto isso.
