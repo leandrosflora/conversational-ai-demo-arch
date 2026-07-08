@@ -13,7 +13,7 @@ System_Ext(campaignAutomation, "Produto de Dados / Automação de Campanha", "Co
 System_Ext(whatsapp, "WhatsApp BSP", "Fornecedor responsável por receber e enviar mensagens WhatsApp.")
 System_Ext(core, "Core Bancário", "Sistemas internos de cliente, contratos, débitos, elegibilidade, simulação e formalização.")
 System_Ext(knowledgeBase, "Base de Conhecimento Corporativa", "FAQ, políticas, procedimentos, produtos e regras de renegociação.")
-System_Ext(bedrock, "Amazon Bedrock", "Serviço de IA Generativa para modelos fundacionais.")
+System_Ext(bedrock, "OpenAI", "Serviço de IA Generativa para modelos fundacionais.")
 System_Ext(opensearch, "OpenSearch", "Busca vetorial e recuperação semântica para RAG.")
 System_Ext(attendance, "Plataforma de Atendimento", "Sistema utilizado por atendentes humanos para continuidade das conversas transferidas.")
 

@@ -251,6 +251,7 @@ services:
       ContractingApi__RetryAttempts: "2"
       FormalizationApi__BaseUrl: http://core-bancario-mock:9404
       FormalizationApi__RetryAttempts: "2"
+      Otel__OtlpEndpoint: http://jaeger:4317
     depends_on:
       - core-bancario-mock
     networks:
@@ -262,13 +263,16 @@ services:
     container_name: conversational-ai-tool-service-renegotiation
     ports:
       - "8400:8400"
+      - "8401:8401"
     environment:
       MCP_HOST: 0.0.0.0
       MCP_PORT: "8400"
+      DOCS_PORT: "8401"
       RENEGOTIATION_SERVICE_BASE_URL: http://renegotiation-service:8080
       RENEGOTIATION_SERVICE_RETRY_ATTEMPTS: "2"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_TOOL_EVENTS_TOPIC: tool.executed
+      OTEL_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
       kafka:
         condition: service_healthy
@@ -284,20 +288,16 @@ services:
     ports:
       - "8100:8100"
     environment:
-      # No Bedrock credentials yet: MOCK_AGENT_ENABLED defaults to true so /process returns a
-      # canned AgentDecision (keyword-matched in app/agent/mock.py) instead of calling Bedrock,
+      # No OpenAI API key yet: MOCK_AGENT_ENABLED defaults to true so /process returns a
+      # canned AgentDecision (keyword-matched in app/agent/mock.py) instead of calling OpenAI,
       # keeping the whole webhook -> BFF -> orchestrator -> agent runtime -> reply pipeline
-      # testable end-to-end. Set MOCK_AGENT_ENABLED=false in .env once real credentials below
-      # are filled in.
+      # testable end-to-end. Set MOCK_AGENT_ENABLED=false in .env once a real key below
+      # is filled in.
       MOCK_AGENT_ENABLED: ${MOCK_AGENT_ENABLED:-true}
-      BEDROCK_MODEL_ID: ${BEDROCK_MODEL_ID:-anthropic.claude-3-5-sonnet-20241022-v2:0}
-      BEDROCK_REGION: ${BEDROCK_REGION:-us-east-1}
-      # Amazon Bedrock credentials: set these in a .env file next to this compose file
-      # (see .env.example), or leave empty to rely on another AWS credential source
-      # (shared config file mounted into the container, IAM role, etc).
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      AWS_SESSION_TOKEN: ${AWS_SESSION_TOKEN:-}
+      OPENAI_MODEL_ID: ${OPENAI_MODEL_ID:-gpt-4o-mini}
+      # OpenAI API key: set this in a .env file next to this compose file (see .env.example).
+      # .env is gitignored - never commit a real key here or anywhere else in the repo.
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       TOOL_SERVICE_MCP_URL: http://tool-service-renegotiation:8400/mcp
       # knowledge-service has no repo in this workspace yet; searches fail closed with an
       # "unavailable" message per app/tools/knowledge.py instead of breaking the request.
@@ -306,6 +306,7 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_AGENT_EVENTS_TOPIC: agent.events
       CONFIDENCE_THRESHOLD: "0.6"
+      OTEL_OTLP_ENDPOINT: http://jaeger:4317
     depends_on:
       kafka:
         condition: service_healthy
@@ -333,6 +334,7 @@ services:
       Kafka__IntentDetectedTopic: intent.detected
       Kafka__ConversationStateChangedTopic: conversation.state_changed
       Session__TtlMinutes: "30"
+      Otel__OtlpEndpoint: http://jaeger:4317
     depends_on:
       kafka:
         condition: service_healthy
@@ -365,6 +367,7 @@ services:
       Kafka__MessageStatusTopic: channel.message.status
       Kafka__RawWebhookReceivedTopic: channel.webhook.received
       Kafka__WebhookConsumerGroupId: whatsapp-bff-webhook-consumer
+      Otel__OtlpEndpoint: http://jaeger:4317
     depends_on:
       kafka-init:
         condition: service_completed_successfully

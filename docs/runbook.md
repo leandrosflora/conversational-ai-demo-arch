@@ -24,7 +24,7 @@ Todos os serviços de aplicação já têm `Dockerfile` e estão wireados no `do
 - Docker Desktop (Docker Engine 20.10+, Compose v2) rodando.
 - .NET 8 SDK (`dotnet --version`).
 - Python 3.12 (cada serviço Python tem seu próprio `.venv` já criado em `agent-runtime-renegotiation/.venv` e `tool-service-renegotiation/.venv`). **Não use Python 3.14**: o debugger do Visual Studio 2022 (PTVS/debugpy) ainda não suporta as mudanças internas do módulo `threading` no 3.14 (`AttributeError: '_MainThread' object has no attribute '_handle'` ao encerrar o processo) — [issue conhecida](https://github.com/microsoft/debugpy/issues/1893), corrigida upstream mas ainda não lançada pelo VS.
-- Portas livres no host: `5432, 6379, 9092, 29092, 9090, 16686, 27017, 3001, 3100, 4317, 4318, 5153, 8000, 8100, 8300, 8400, 9400, 9401, 9402, 9403, 9404`.
+- Portas livres no host: `5432, 6379, 9092, 29092, 9090, 16686, 27017, 3001, 3100, 4317, 4318, 5153, 8000, 8100, 8300, 8400, 8401, 9400, 9401, 9402, 9403, 9404`.
 
 ---
 
@@ -44,7 +44,7 @@ docker compose ps
 | MongoDB | `27017` | histórico de mensagens, memória conversacional, LLM runs, tool calls, RAG |
 | Redis | `6379` | cache / sessão |
 | Kafka | `9092` (interno/containers), `29092` (host) | event streaming |
-| Jaeger UI | `16686` | tracing (OTLP em `4317`/`4318`) |
+| Jaeger UI | `16686` | tracing (OTLP em `4317`/`4318`) — os 5 serviços de aplicação exportam traces (variável `Otel:OtlpEndpoint` nos .NET, `OTEL_OTLP_ENDPOINT` nos Python), formando um único trace distribuído por requisição de ponta a ponta |
 | Prometheus | `9090` | métricas |
 | Grafana | **`3001`** | dashboards (login `admin`/`admin`) |
 | Loki | `3100` | logs |
@@ -117,7 +117,7 @@ dotnet run --urls http://localhost:9400
 
 Chama `ClientApi` (`:9401`), `EligibilityApi` (`:9402`), `ContractingApi` (`:9403`), `FormalizationApi` (`:9404`) — servidas pelo mock da seção 3.0. Sem o mock no ar, essas chamadas retornam `502 Bad Gateway` (comportamento de degradação esperado, não um bug).
 
-### 3.2 Tool Service / MCP (Python) — porta `8400`
+### 3.2 Tool Service / MCP (Python) — porta `8400` (+ Swagger em `8401`)
 
 ```bash
 cd tool-service-renegotiation
@@ -127,6 +127,8 @@ python -m app.main
 
 Serve MCP via streamable-HTTP em `http://localhost:8400/mcp`. Chama `RenegotiationService` em `http://localhost:9400` (seção 3.1).
 
+MCP não tem uma superfície OpenAPI própria (é um protocolo JSON-RPC-like sobre streamable-HTTP, não REST), então `app/main.py` também sobe, no mesmo processo, uma **fachada REST somente para documentação** (`app/rest_api.py`) espelhando as mesmas 7 tools — Swagger UI em `http://localhost:8401/docs`. Ninguém neste workspace consome essa porta; o `agent-runtime-renegotiation` fala MCP (`:8400`) diretamente, não REST. Serve só pra explorar/testar as tools manualmente com uma UI.
+
 ### 3.3 Agent Runtime (Python/Strands) — porta `8100`
 
 ```bash
@@ -135,15 +137,15 @@ source .venv/Scripts/activate
 uvicorn app.main:app --host 127.0.0.1 --port 8100
 ```
 
-Expõe `POST /process`. Chama Bedrock (precisa de credenciais AWS reais — sem elas, a inferência falha e o serviço cai no fallback de handoff com motivo `agent_runtime_unavailable`), o Tool Service via MCP (`:8400`, seção 3.2) e a `KnowledgeService` assumida (`:8500`, inexistente).
+Expõe `POST /process`. Chama a OpenAI (precisa de `OPENAI_API_KEY` real — sem ela, a inferência falha e o serviço cai no fallback de handoff com motivo `agent_runtime_unavailable`), o Tool Service via MCP (`:8400`, seção 3.2) e a `KnowledgeService` assumida (`:8500`, inexistente). Esse é FastAPI de verdade (não MCP), então já vem com Swagger UI automático em `http://localhost:8100/docs`, sem precisar de nenhuma configuração extra.
 
-Para testar o fluxo completo sem credenciais AWS, defina `MOCK_AGENT_ENABLED=true` (variável de ambiente, ver `Settings.mock_agent_enabled` em `app/config.py`) antes de subir o serviço:
+Para testar o fluxo completo sem uma chave da OpenAI, defina `MOCK_AGENT_ENABLED=true` (variável de ambiente, ver `Settings.mock_agent_enabled` em `app/config.py`) antes de subir o serviço:
 
 ```bash
 MOCK_AGENT_ENABLED=true uvicorn app.main:app --host 127.0.0.1 --port 8100
 ```
 
-Isso substitui a chamada ao Bedrock por uma decisão determinística por palavra-chave (`app/agent/mock.py`) — útil para exercitar webhook → BFF → Orchestrator → Agent Runtime → resposta de ponta a ponta sem depender do modelo real. **Cuidado com a confusão de nomes:** `agent_runtime_unavailable` é usado tanto pelo Agent Runtime (quando a chamada ao Bedrock falha, `RequiresHandoff=true` mas `HTTP 200`) quanto pelo sentinel do lado do Orchestrator (`AgentRuntimeResult.Unavailable()`, quando o processo nem responde) — os dois têm a mesma string de motivo mas origens diferentes; veja o log de qual dos dois serviços para diagnosticar.
+Isso substitui a chamada à OpenAI por uma decisão determinística por palavra-chave (`app/agent/mock.py`) — útil para exercitar webhook → BFF → Orchestrator → Agent Runtime → resposta de ponta a ponta sem depender do modelo real. **Cuidado com a confusão de nomes:** `agent_runtime_unavailable` é usado tanto pelo Agent Runtime (quando a chamada à OpenAI falha, `RequiresHandoff=true` mas `HTTP 200`) quanto pelo sentinel do lado do Orchestrator (`AgentRuntimeResult.Unavailable()`, quando o processo nem responde) — os dois têm a mesma string de motivo mas origens diferentes; veja o log de qual dos dois serviços para diagnosticar.
 
 ### 3.4 Audit Service (mock, .NET) — porta `8300`
 
@@ -188,7 +190,7 @@ Kafka substituiu o que antes era uma fila em memória entre o webhook e o Orches
 |---|---|---|
 | whatsapp-bff | `5153` | Kafka (`9092`/`29092`, tópico `channel.webhook.received`) → consumido pelo próprio processo → Orchestrator (`8000`) |
 | conversation-orchestrator | `8000` | AgentRuntime (`8100`), ChannelBff (`5153`), AuditService (`8300`, servida pelo mock da seção 3.4), HandoffService (`8200`)* |
-| agent-runtime-renegotiation | `8100` | Bedrock (AWS)*, ToolService MCP (`8400`), KnowledgeService (`8500`)* |
+| agent-runtime-renegotiation | `8100` | OpenAI (externo, real), ToolService MCP (`8400`), KnowledgeService (`8500`)* |
 | tool-service-renegotiation | `8400` | RenegotiationService (`9400`) |
 | renegotiation-service | `9400` | ClientApi (`9401`), EligibilityApi (`9402`), ContractingApi (`9403`), FormalizationApi (`9404`) — todas servidas pelo `core-bancario-mock` (seção 3.0) |
 
@@ -197,6 +199,19 @@ Kafka substituiu o que antes era uma fila em memória entre o webhook e o Orches
 `whatsapp-bff` é o único serviço que depende do Kafka da infraestrutura (seção 2) para funcionar, e não só para publicar eventos de auditoria: sem Kafka no ar, o webhook responde `503` (não aceita a entrega) em vez de `200`.
 
 > Esta tabela é um resumo operacional para subir o ambiente. A referência canônica de portas, tópicos Kafka e datastores — mantida separadamente para não duplicar e divergir desta — é [`docs/contracts/services-map.md`](contracts/services-map.md) e [`docs/contracts/kafka-events.md`](contracts/kafka-events.md). Detalhe de cada serviço (APIs, regras de negócio, eventos) em [`docs/services/`](services/).
+
+### Tracing distribuído (Jaeger)
+
+Os 5 serviços de aplicação exportam spans via OTLP para o Jaeger (seção 2, porta `16686`), formando um único trace por requisição de ponta a ponta (webhook → BFF → Orchestrator → Agent Runtime → Tool Service MCP → Renegotiation Service). Cada serviço aponta pro endpoint OTLP por uma variável própria:
+
+| Serviço | Variável | Default local (`dotnet run`/`uvicorn`) |
+|---|---|---|
+| whatsapp-bff, conversation-orchestrator, renegotiation-service | `Otel:OtlpEndpoint` (appsettings) / `Otel__OtlpEndpoint` (env) | `http://localhost:4317` |
+| agent-runtime-renegotiation, tool-service-renegotiation | `OTEL_OTLP_ENDPOINT` | `http://localhost:4317` |
+
+No `docker-compose.yml` todos apontam pra `http://jaeger:4317`. O SDK Strands Agents já vem com instrumentação própria (spans `chat`, `execute_tool`, `execute_event_loop_cycle`, `invoke_agent`) — só de registrar o `TracerProvider` no `agent-runtime-renegotiation`, esses spans já aparecem no trace, sem configuração adicional. O exportador OTLP nunca bloqueia o request se o Jaeger estiver fora do ar (falha silenciosamente, mesma filosofia catch-log-continue do resto da plataforma).
+
+Os mocks (`core-bancario-mock`, `audit-service-mock`) não têm instrumentação — são test doubles simples, sem latência real para decompor.
 
 ---
 
@@ -212,8 +227,9 @@ curl "http://localhost:5153/webhooks/whatsapp?hub.mode=subscribe&hub.verify_toke
 # 2. Mensagem simulada chegando no Orchestrator diretamente
 curl -X POST http://localhost:8000/messages \
   -H "Content-Type: application/json" \
-  -d '{"ConversationId":"5511999990000","MessageType":"Text","Text":"Ola"}'
+  -d '{"MessageId":"wamid.smoke-1","From":"5511999990000","ConversationId":"5511999990000","MessageType":"Text","Text":"Ola"}'
 # Esperado: 202 Accepted (mesmo com Agent Runtime/downstream indisponíveis)
+# MessageId, From e ConversationId são obrigatórios (400 Bad Request sem eles)
 
 # 3. MCP Tool Service: listar ferramentas
 python -c "
@@ -241,6 +257,11 @@ curl -X POST http://localhost:8300/journey-events \
   -H "Content-Type: application/json" \
   -d '{"conversationId":"5511999990000","intent":null,"outcome":"handoff","timestamp":"2026-01-01T00:00:00Z"}'
 # Esperado: 200 OK
+
+# 6. Tracing distribuído: confirma que os 5 serviços exportaram spans pro Jaeger
+curl -s http://localhost:16686/api/services
+# Esperado: array incluindo whatsapp-bff, conversation-orchestrator,
+# agent-runtime-renegotiation, tool-service-renegotiation, renegotiation-service
 ```
 
 ### Verificando a durabilidade do webhook via Kafka
@@ -323,7 +344,7 @@ Verifique a tabela da seção 3 ("Mapa de portas"): se o downstream está marcad
 Desde que a fila em memória do `whatsapp-bff` foi substituída pelo Kafka (seção 3.6), isso normalmente significa que o `conversation-orchestrator` está fora do ar (ou inacessível) e o `KafkaWebhookConsumerService` está retentando a mesma mensagem em loop (por design — ver seção 3.6). Confira o log do `whatsapp-bff` por `Forward to Orchestrator failed ... retrying the same offset`; suba o Orchestrator (seção 3.5) e o processamento retoma sozinho a partir da mesma mensagem, sem precisar reenviar o webhook. Se o webhook responder `503` em vez de `200`, o problema é o Kafka em si (broker fora do ar) — confira `docker compose ps` (seção 2).
 
 ### Agent Runtime responde `200 OK` mas com `HandoffReason: "agent_runtime_unavailable"`
-Isso **não** é o Orchestrator falhando em alcançar o Agent Runtime (esse caso não teria resposta `200` nenhuma) — é o próprio `agent-runtime-renegotiation` respondendo normalmente, mas caindo no fallback de `invoke_agent` porque a chamada ao Bedrock falhou (credenciais AWS ausentes/inválidas, por exemplo). Ver seção 3.3 para subir com `MOCK_AGENT_ENABLED=true` e evitar depender do Bedrock localmente.
+Isso **não** é o Orchestrator falhando em alcançar o Agent Runtime (esse caso não teria resposta `200` nenhuma) — é o próprio `agent-runtime-renegotiation` respondendo normalmente, mas caindo no fallback de `invoke_agent` porque a chamada à OpenAI falhou (`OPENAI_API_KEY` ausente/inválida, por exemplo). Ver seção 3.3 para subir com `MOCK_AGENT_ENABLED=true` e evitar depender da OpenAI localmente.
 
 ---
 
@@ -332,4 +353,4 @@ Isso **não** é o Orchestrator falhando em alcançar o Agent Runtime (esse caso
 - **Memory Service**, **Knowledge Service**, **Handoff Service**: containers/serviços não implementados neste workspace; PostgreSQL e MongoDB já têm o schema pronto para quando forem construídos.
 - **Core Bancário real** (Client/Eligibility/Contracting/Formalization APIs): sistema externo de fato, fora do escopo — existe apenas um **mock** local (`core-bancario-mock/`, seção 3.0) com dados fake, para permitir testar o fluxo completo sem `502`.
 - **Audit Service real**: idem — existe apenas um **mock** local (`audit-service-mock/`, seção 3.4) que aceita qualquer `POST /journey-events` e responde `200 OK` sem persistir nada, só para eliminar o warning de indisponibilidade durante testes locais.
-- Credenciais reais da AWS Bedrock (necessárias para o Agent Runtime raciocinar de verdade em vez de cair no fallback de handoff) — use `MOCK_AGENT_ENABLED=true` (seção 3.3) enquanto isso.
+- Uma `OPENAI_API_KEY` real, se você ainda não tiver uma configurada (necessária para o Agent Runtime raciocinar de verdade em vez de cair no fallback de handoff) — use `MOCK_AGENT_ENABLED=true` (seção 3.3) enquanto isso.

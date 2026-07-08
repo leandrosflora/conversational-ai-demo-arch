@@ -8,7 +8,7 @@ Aceito e implementado (retroativo).
 
 ## Contexto
 
-A cadeia de serviços desta plataforma tem várias dependências ainda não implementadas (Handoff Service, Audit Service, Knowledge Service) e outras que podem estar temporariamente fora do ar (Bedrock, Kafka, o próprio Orchestrator). Numa jornada conversacional, uma exceção não tratada em qualquer ponto da cadeia deixaria o cliente sem resposta, sem visibilidade do motivo.
+A cadeia de serviços desta plataforma tem várias dependências ainda não implementadas (Handoff Service, Knowledge Service) e outras que podem estar temporariamente fora do ar (OpenAI, Kafka, o próprio Orchestrator). Numa jornada conversacional, uma exceção não tratada em qualquer ponto da cadeia deixaria o cliente sem resposta, sem visibilidade do motivo.
 
 ## Decisão
 
@@ -16,7 +16,7 @@ Todo serviço da plataforma segue a mesma filosofia de resiliência: uma falha n
 
 - Publicação de eventos Kafka (exceto `channel.webhook.received`): falha é logada como erro e ignorada — o request original segue normalmente.
 - Chamadas HTTP para Handoff Service / Audit Service (a partir do `conversation-orchestrator`): falha é logada como warning; o fluxo continua sem bloquear.
-- Chamada ao Agent Runtime (a partir do Orchestrator) ou ao Bedrock (a partir do agente): falha, após esgotar retries, degrada para uma decisão explícita de handoff humano — não é apenas ignorada, tem uma consequência de negócio definida.
+- Chamada ao Agent Runtime (a partir do Orchestrator) ou à OpenAI (a partir do agente): falha, após esgotar retries, degrada para uma decisão explícita de handoff humano — não é apenas ignorada, tem uma consequência de negócio definida.
 - Chamada ao Knowledge Service (a partir do agente): falha vira uma mensagem textual de indisponibilidade injetada no contexto do agente, não um erro.
 - Chamada ao Core Bancário (a partir do `renegotiation-service`): falha vira `502 Bad Gateway` explícito — a única camada onde a falha *é* repassada ao chamador, porque não há um fallback de negócio sensato nesse ponto.
 

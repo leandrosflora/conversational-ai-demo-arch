@@ -1,10 +1,10 @@
 # agent-runtime-renegotiation
 
-Repo: [`leandrosflora/agent-runtime-renegotiation`](https://github.com/leandrosflora/agent-runtime-renegotiation) · Stack: Python, FastAPI, Strands Agents, Amazon Bedrock · Porta local: `8100`
+Repo: [`leandrosflora/agent-runtime-renegotiation`](https://github.com/leandrosflora/agent-runtime-renegotiation) · Stack: Python, FastAPI, Strands Agents, OpenAI · Porta local: `8100`
 
 ## Responsabilidade principal
 
-Hospeda o agente de IA (Strands Agents + Bedrock) que conduz a jornada de renegociação: recebe uma mensagem do Orchestrator, monta as ferramentas disponíveis (tools MCP do `tool-service-renegotiation` + tool de knowledge base/RAG), invoca o modelo para produzir uma decisão estruturada (intenção, confiança, texto de resposta, necessidade de handoff), publica um evento de auditoria no Kafka e devolve a decisão.
+Hospeda o agente de IA (Strands Agents + OpenAI) que conduz a jornada de renegociação: recebe uma mensagem do Orchestrator, monta as ferramentas disponíveis (tools MCP do `tool-service-renegotiation` + tool de knowledge base/RAG), invoca o modelo para produzir uma decisão estruturada (intenção, confiança, texto de resposta, necessidade de handoff), publica um evento de auditoria no Kafka e devolve a decisão.
 
 ## Dados que o serviço possui
 
@@ -34,7 +34,7 @@ Nenhum.
 | Destino | Protocolo | Comportamento se indisponível |
 |---|---|---|
 | `tool-service-renegotiation` (`:8400`, MCP) | streamable-HTTP, via `strands.tools.mcp.MCPClient` | Se a conexão/listagem de tools falhar, o agente segue sem essas tools (não bloqueia o request) |
-| Amazon Bedrock (`anthropic.claude-3-5-sonnet-20241022-v2:0`, região `us-east-1` por padrão) | SDK Strands/boto3 | Sem credenciais AWS ou falha do modelo → captura genérica → degrada para decisão de handoff (`requires_handoff=true`, `handoff_reason="agent_runtime_unavailable"`) |
+| OpenAI (`gpt-4o-mini` por padrão) | SDK Strands, via `OpenAIModel` | Sem `OPENAI_API_KEY` ou falha do modelo → captura genérica → degrada para decisão de handoff (`requires_handoff=true`, `handoff_reason="agent_runtime_unavailable"`) |
 | Knowledge Service (`:8500`, **assumido, não implementado**) | `GET /search?query=...` (httpx) | Retry via `tenacity` (3 tentativas, 0.2s entre elas); se todas falharem, retorna ao agente a string `"Base de conhecimento indisponivel no momento."` em vez de erro |
 
 ## Persistência & infraestrutura

@@ -162,7 +162,7 @@ Plataforma de IA Conversacional ↔ Base de Conhecimento Corporativa
 
 ---
 
-### Amazon Bedrock
+### OpenAI
 
 Serviço de IA Generativa utilizado pela plataforma.
 
@@ -176,7 +176,7 @@ Serviço de IA Generativa utilizado pela plataforma.
 #### Relacionamento
 
 ```text
-Plataforma de IA Conversacional ↔ Amazon Bedrock
+Plataforma de IA Conversacional ↔ OpenAI
 ```
 
 ---
@@ -297,7 +297,7 @@ Data Lake Corporativo → Produto de Dados / Automação de Campanha → Cliente
    │          │          │              │              │              │
    ▼          ▼          ▼              ▼              ▼              ▼
 
-Core      Bedrock   OpenSearch   Base de      Plataforma     Data Lake
+Core      OpenAI    OpenSearch   Base de      Plataforma     Data Lake
 Bancário             Vetorial   Conhecimento Atendimento    Corporativo
 ```
 

@@ -1,6 +1,6 @@
 # Diagramas de sequência da jornada
 
-Do gatilho de campanha até a consulta de débitos e elegibilidade: como uma mensagem do WhatsApp atravessa o `whatsapp-bff`, o `conversation-orchestrator`, o agente Strands/Bedrock, o servidor MCP e o Core Bancário mock.
+Do gatilho de campanha até a consulta de débitos e elegibilidade: como uma mensagem do WhatsApp atravessa o `whatsapp-bff`, o `conversation-orchestrator`, o agente Strands/OpenAI, o servidor MCP e o Core Bancário mock.
 
 ## Legenda
 
@@ -185,7 +185,7 @@ deactivate Orch
 |---|---|---|
 | whatsapp-bff | .NET 8 · Minimal API | `5153` |
 | conversation-orchestrator | .NET 8 · Minimal API | `8000` |
-| agent-runtime-renegotiation | Python · FastAPI · Strands + Bedrock | `8100` |
+| agent-runtime-renegotiation | Python · FastAPI · Strands + OpenAI | `8100` |
 | tool-service-renegotiation | Python · MCP (FastMCP) | `8400` |
 | renegotiation-service | .NET 8 · Minimal API | `9400` |
 | core-bancario-mock | .NET 8 · 4 APIs mock | `9401`–`9404` |

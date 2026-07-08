@@ -8,7 +8,7 @@ Person(agent, "Atendente Humano", "Operador que assume conversas transferidas pe
 
 System_Ext(whatsapp, "WhatsApp BSP", "Recebe e envia mensagens WhatsApp.")
 System_Ext(core, "Core Bancário", "Sistemas internos de cliente, contratos, débitos, simulação e formalização.")
-System_Ext(bedrock, "Amazon Bedrock", "Modelos fundacionais.")
+System_Ext(bedrock, "OpenAI", "Modelos fundacionais.")
 System_Ext(opensearch, "OpenSearch", "Busca vetorial e recuperação semântica.")
 System_Ext(attendance, "Plataforma de Atendimento", "Sistema usado por atendentes humanos.")
 System_Ext(datalake, "Data Lake Corporativo", "Analytics, auditoria e histórico corporativo.")
