@@ -12,6 +12,7 @@ Arquitetura de referência para plataformas de IA conversacional utilizando agen
 - [ADRs](docs/adr/) — decisões de arquitetura já implementadas no código.
 - [Arquitetura de segurança](docs/security/security-architecture.md).
 - [Runbook do ambiente local](docs/runbook.md) — como subir a infraestrutura e os serviços de aplicação.
+- [Validações E2E](docs/validation/) — execuções reais da jornada completa contra os serviços rodando, comparando comportamento observado com o que os docs afirmam.
 
 ## Ambiente local
 

@@ -45,8 +45,10 @@ Modelos de domínio (`Domain/`): `InboundChannelMessage`, `MessageStatusEvent` (
 
 | Destino | Chamada | Comportamento se indisponível |
 |---|---|---|
-| `conversation-orchestrator` (`:8000`) | `POST /messages` | Offset do Kafka só é commitado se o forward tiver sucesso; se falhar, `Seek` de volta ao mesmo offset e retry a cada ~2s (backpressure, sem perda) |
-| WhatsApp Cloud API (Graph API) | `POST /{phone-number-id}/messages` | Falha vira `502 Bad Gateway` no `POST /internal/messages` |
+| `conversation-orchestrator` (`:8000` dev local / `:5268` via `docker compose`) | `POST /messages` | Offset do Kafka só é commitado se o forward tiver sucesso; se falhar, `Seek` de volta ao mesmo offset e retry a cada ~2s (backpressure, sem perda) |
+| WhatsApp Cloud API (Graph API) | `POST /{phone-number-id}/messages` | Falha vira `502 Bad Gateway` no `POST /internal/messages` — **sempre** o caso em ambiente local/demo sem uma WhatsApp Business Account real configurada, não só quando o Graph API está fora do ar |
+
+> **Validado em 2026-07-13** ([relatório](../validation/2026-07-13-e2e-journey.md)): o cliente HTTP usado para `POST /messages` (`IOrchestratorClient`) tem `AttemptTimeout=10s`. O endpoint `/messages` do Orchestrator é **síncrono de ponta a ponta** — só responde depois de terminar de chamar o Agent Runtime (que pode levar vários segundos com a OpenAI real) e de tentar entregar/despachar a resposta. Quando esse processamento passa de 10s, o `whatsapp-bff` cancela a chamada e tenta de novo (`AddStandardResilienceHandler`); como o Orchestrator não deduplica por `MessageId`, a mesma mensagem inbound acaba sendo processada **duas vezes** (observado diretamente nesta validação: dois traces Jaeger distintos para o mesmo `MessageId`, cada um chamando o Agent Runtime/OpenAI de novo). Isso é diferente do retry por offset do Kafka descrito na linha acima — acontece mesmo com Kafka e Orchestrator saudáveis, só por causa da combinação de latência real da OpenAI com esse timeout. Reportado como achado de código para um change de follow-up.
 
 ## Persistência & infraestrutura
 

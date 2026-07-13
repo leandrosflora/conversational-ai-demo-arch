@@ -1,6 +1,6 @@
 # Mapa de serviços
 
-**Fonte de verdade:** varredura do código-fonte de cada repositório, feita em 2026-07-06. Este documento — junto com [`kafka-events.md`](kafka-events.md) e [`data-stores.md`](data-stores.md) — é a referência canônica de portas/tópicos/serviços; `docs/runbook.md` aponta para cá em vez de manter uma segunda cópia.
+**Fonte de verdade:** varredura do código-fonte de cada repositório, feita em 2026-07-06, revisada contra uma execução real da jornada E2E em 2026-07-13 (ver [relatório de validação](../validation/2026-07-13-e2e-journey.md)). Este documento — junto com [`kafka-events.md`](kafka-events.md) e [`data-stores.md`](data-stores.md) — é a referência canônica de portas/tópicos/serviços; `docs/runbook.md` aponta para cá em vez de manter uma segunda cópia.
 
 ## Serviços implementados
 
@@ -18,9 +18,10 @@
 | Nome | Porta assumida | Chamado por | Situação |
 |---|---|---|---|
 | Handoff Service | `:8200` | conversation-orchestrator (`POST /handoffs`) | Cliente HTTP existe; falha é só logada, nunca bloqueia |
-| Audit Service | `:8300` | conversation-orchestrator (`POST /journey-events`) | Idem |
 | Knowledge Service | `:8500` | agent-runtime-renegotiation (`GET /search`) | Idem — retorna mensagem de indisponibilidade ao agente |
 | Salesforce CRM / Data Lake Corporativo | — | Nenhum código do workspace | Existem apenas nos documentos de negócio/C4 (ver [`business-context.md`](../context/business-context.md)) |
+
+**Nota sobre o Audit Service** (`:8300`): diferente das três linhas acima, não é mais uma dependência puramente assumida — um mock (`audit-service-mock`) existe, está implementado e roda em container, respondendo `200 OK` e logando o evento quando chamado diretamente (`POST /journey-events`). O que permanece incompleto é o lado chamador: `conversation-orchestrator` injeta um `IAuditServiceClient`, mas a chamada em `IngestMessageUseCase.cs` está comentada — nunca é executada. Validado em 2026-07-13 (ver [relatório](../validation/2026-07-13-e2e-journey.md)); listado aqui porque, do ponto de vista de qualquer serviço que dependa desses eventos de auditoria, o efeito observável é o mesmo de uma dependência não implementada.
 
 ## Detalhe da varredura
 

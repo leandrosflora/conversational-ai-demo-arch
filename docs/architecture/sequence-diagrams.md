@@ -190,12 +190,14 @@ deactivate Orch
 | renegotiation-service | .NET 8 · Minimal API | `9400` |
 | core-bancario-mock | .NET 8 · 4 APIs mock | `9401`–`9404` |
 
+> Portas de "dev local" (`dotnet run`/`uvicorn`, seção 3 do [`runbook.md`](../runbook.md)). Via `docker compose up -d`, `conversation-orchestrator` e `renegotiation-service` são expostos no host em portas diferentes (`5268` e `5266` — hardcoded em `docker-compose.yml`); ver a tabela completa em [`runbook.md` § Mapa de portas](../runbook.md#mapa-de-portas--resumo). A comunicação serviço-a-serviço usa sempre a rede interna do Docker, então esse detalhe só importa para quem testa via `curl` do host.
+
 **Tópicos Kafka observados:** `channel.webhook.received`, `channel.message.received`, `channel.message.status`, `tool.executed`, `agent.events`, `intent.detected`, `conversation.state_changed`.
 
 **Lacunas / contratos assumidos** (sem implementação neste workspace):
 
 - **Handoff Service** (`:8200`) — cliente HTTP existe no orchestrator com contrato assumido.
-- **Audit Service** (`:8300`) — mesma situação; registra jornada mas não há endpoint real.
+- **Audit Service** (`:8300`) — um mock (`audit-service-mock`) existe e funciona quando chamado diretamente, mas a chamada do `conversation-orchestrator` para ele está comentada no código (`IngestMessageUseCase.cs`) — nunca é executada. Validado em 2026-07-13, ver [relatório de validação](../validation/2026-07-13-e2e-journey.md) e [`docs/services/conversation-orchestrator.md`](../services/conversation-orchestrator.md#dependências-síncronas).
 - **Knowledge Service / RAG** (`:8500`) — usado pelo agente para `search_knowledge_base`; formato de resposta é assumido, sem verificação.
 - **Salesforce CRM / Data Lake** — existem apenas nos documentos de arquitetura; nenhum código do repositório modela essa integração.
 

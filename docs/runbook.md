@@ -163,7 +163,9 @@ cd conversation-orchestrator
 dotnet run --urls http://localhost:8000
 ```
 
-Expõe `POST /messages`. Chama `AgentRuntime` (`:8100`, seção 3.3), `ChannelBff` (`:5153`, seção 3.6), `AuditService` (`:8300`, servida pelo mock da seção 3.4) e a ainda-inexistente `HandoffService` (`:8200`).
+Expõe `POST /messages`. Chama `AgentRuntime` (`:8100`, seção 3.3), `ChannelBff` (`:5153`, seção 3.6) e a ainda-inexistente `HandoffService` (`:8200`).
+
+> **Validado em 2026-07-13** ([relatório](validation/2026-07-13-e2e-journey.md)): apesar de o `AuditServiceClient` estar registrado no DI, a chamada `auditClient.RecordJourneyEventAsync(...)` está comentada em `Application/UseCases/IngestMessageUseCase.cs` — o Orchestrator **nunca** chama o `audit-service-mock` (seção 3.4) na prática, mesmo o mock estando no ar e respondendo `200 OK`/logando quando chamado diretamente. Ver detalhe em [`docs/services/conversation-orchestrator.md`](services/conversation-orchestrator.md#dependências-síncronas).
 
 ### 3.6 Channel BFF (.NET) — porta `5153` (padrão do `dotnet run`)
 
@@ -184,17 +186,23 @@ Kafka substituiu o que antes era uma fila em memória entre o webhook e o Orches
 
 > Para testar o handshake de verificação do webhook, defina `WhatsApp:VerifyToken` em `appsettings.Development.json` (ou variável de ambiente) e rode com `ASPNETCORE_ENVIRONMENT=Development`.
 
+> **Validado em 2026-07-13** ([relatório](validation/2026-07-13-e2e-journey.md)): sem uma WhatsApp Business Account real configurada, o `POST /internal/messages` chega a ser recebido e processado normalmente, mas a chamada de saída à Graph API real sempre falha (`Unsupported post request...`) e o Orchestrator recebe `502` do `whatsapp-bff` ao tentar entregar a resposta — mesmo comportamento de degradação documentado no item 2 da tabela de dependências síncronas abaixo, só que sempre ativo em ambiente local/demo, não apenas quando o BFF está fora do ar. Não é um bug: é o mesmo tipo de degradação graciosa esperada, só que disparada por falta de credenciais reais em vez de indisponibilidade do processo.
+>
+> Esse mesmo teste também expôs um problema separado: o cliente HTTP do `whatsapp-bff` para o Orchestrator (`IOrchestratorClient`) tem um `AttemptTimeout` de 10s: quando o processamento síncrono do Orchestrator (que inclui a chamada real à OpenAI) leva mais que isso, o `whatsapp-bff` cancela a chamada e tenta de novo — e como o Orchestrator não deduplica por `MessageId`, a mesma mensagem inbound pode ser processada duas vezes (duas chamadas ao Agent Runtime/OpenAI, duas tentativas de entrega de resposta). Ver achado detalhado no [relatório de validação](validation/2026-07-13-e2e-journey.md).
+
 ### Mapa de portas — resumo
 
-| Serviço | Porta | Downstream que chama |
-|---|---|---|
-| whatsapp-bff | `5153` | Kafka (`9092`/`29092`, tópico `channel.webhook.received`) → consumido pelo próprio processo → Orchestrator (`8000`) |
-| conversation-orchestrator | `8000` | AgentRuntime (`8100`), ChannelBff (`5153`), AuditService (`8300`, servida pelo mock da seção 3.4), HandoffService (`8200`)* |
-| agent-runtime-renegotiation | `8100` | OpenAI (externo, real), ToolService MCP (`8400`), KnowledgeService (`8500`)* |
-| tool-service-renegotiation | `8400` | RenegotiationService (`9400`) |
-| renegotiation-service | `9400` | ClientApi (`9401`), EligibilityApi (`9402`), ContractingApi (`9403`), FormalizationApi (`9404`) — todas servidas pelo `core-bancario-mock` (seção 3.0) |
+| Serviço | Porta (dev local, seção 3) | Porta host (`docker compose up -d`) | Downstream que chama |
+|---|---|---|---|
+| whatsapp-bff | `5153` | `5153` | Kafka (`9092`/`29092`, tópico `channel.webhook.received`) → consumido pelo próprio processo → Orchestrator |
+| conversation-orchestrator | `8000` | **`5268`** | AgentRuntime (`8100`), ChannelBff (`5153`), HandoffService (`8200`)* — cliente do AuditService existe mas nunca é chamado (ver nota abaixo) |
+| agent-runtime-renegotiation | `8100` | `8100` | OpenAI (externo, real), ToolService MCP (`8400`), KnowledgeService (`8500`)* |
+| tool-service-renegotiation | `8400` | `8400` | RenegotiationService (`9400` em dev local / `5266` em container) |
+| renegotiation-service | `9400` | **`5266`** | ClientApi (`9401`), EligibilityApi (`9402`), ContractingApi (`9403`), FormalizationApi (`9404`) — todas servidas pelo `core-bancario-mock` (seção 3.0) |
 
-`*` = dependência **assumida**, ainda não implementada neste workspace. Erros de indisponibilidade nesses pontos (502, handoff automático, timeouts) são o comportamento esperado e documentado em cada change arquivada (`openspec/changes/archive/`) — todo serviço foi construído para degradar graciosamente (nunca derrubar o processo) quando esses downstream não respondem. As 4 APIs do Core Bancário já têm mock (seção 3.0) e o Audit Service também (`audit-service-mock`, seção 3.4) — sem eles no ar, o comportamento de degradação (502 / warning engolido, respectivamente) continua sendo o esperado.
+`*` = dependência **assumida**, ainda não implementada neste workspace. Erros de indisponibilidade nesses pontos (502, handoff automático, timeouts) são o comportamento esperado e documentado em cada change arquivada (`openspec/changes/archive/`) — todo serviço foi construído para degradar graciosamente (nunca derrubar o processo) quando esses downstream não respondem. As 4 APIs do Core Bancário já têm mock (seção 3.0).
+
+> **Validado em 2026-07-13** ([relatório](validation/2026-07-13-e2e-journey.md)): as portas host de `conversation-orchestrator` (`5268`) e `renegotiation-service` (`5266`) no modo `docker compose up -d` (hardcoded em `docker-compose.yml`, service-a-service sempre usa a rede interna do Docker em `:8080`) não eram documentadas em lugar nenhum — só a porta de dev local (`8000`/`9400`) aparecia aqui e no restante dos docs. Quem sobe o stack inteiro via `docker compose up -d` (o fluxo descrito primeiro no `README.md`) e tenta reproduzir os comandos da seção 4 contra `:8000`/`:9400` recebe conexão recusada. Além disso, a chamada ao `AuditService` a partir do Orchestrator está **comentada no código** (`Application/UseCases/IngestMessageUseCase.cs`) — nunca é executada, então não há "warning engolido" nem chamada real ao `audit-service-mock`, mesmo com o mock no ar. Detalhe em [`docs/services/conversation-orchestrator.md`](services/conversation-orchestrator.md#dependências-síncronas).
 
 `whatsapp-bff` é o único serviço que depende do Kafka da infraestrutura (seção 2) para funcionar, e não só para publicar eventos de auditoria: sem Kafka no ar, o webhook responde `503` (não aceita a entrega) em vez de `200`.
 
