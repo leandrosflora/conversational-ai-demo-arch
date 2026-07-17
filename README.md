@@ -7,7 +7,7 @@ Arquitetura de referência para plataformas de IA conversacional utilizando agen
 - [Contexto de negócio](docs/context/business-context.md) — jornadas, personas e escopo.
 - [C4 nível 1 (contexto)](docs/architecture/c4-context.md) e [diagramas C4](docs/architecture/C4/) (`.puml`/`.svg`/`.png`).
 - [Diagramas de sequência da jornada](docs/architecture/sequence-diagrams.md) — passo a passo técnico, do webhook do WhatsApp até a consulta de débitos/elegibilidade.
-- [Páginas de referência por serviço](docs/services/) — responsabilidade, APIs, eventos e regras de negócio de cada um dos 6 serviços implementados.
+- [Páginas de referência por serviço](docs/services/) — responsabilidade, APIs, eventos e regras de negócio de cada um dos 6 serviços centrais da jornada de renegociação. `audit-service-mock`, `knowledge-service` e `conversation-memory-service` ainda não têm página própria aqui — ver `docs/runbook.md` §§3.4, 3.7 e 3.8.
 - [Contratos](docs/contracts/) — mapa de serviços, matriz de eventos Kafka, datastores.
 - [ADRs](docs/adr/) — decisões de arquitetura já implementadas no código.
 - [Arquitetura de segurança](docs/security/security-architecture.md).
@@ -42,10 +42,11 @@ docker compose down -v
 | MongoDB | `localhost:27018` | `admin/admin` |
 | PostgreSQL | `localhost:5432` | `postgres/postgres` |
 | Kafka | `localhost:29092` | - |
+| OpenSearch | http://localhost:9200 | - |
 | Jaeger UI | http://localhost:16686 | - |
 | Loki | http://localhost:3100 | - |
 | Prometheus | http://localhost:9090 | - |
-| Grafana | http://localhost:3000 | `admin/admin` |
+| Grafana | http://localhost:3001 | `admin/admin` |
 
 ### Observabilidade
 
@@ -67,6 +68,9 @@ O Prometheus coleta métricas dele mesmo, do Jaeger e de uma aplicação exposta
 | Tool Service (MCP) | [tool-service-renegotiation](https://github.com/leandrosflora/tool-service-renegotiation) |
 | Renegotiation Service | [renegotiation-service](https://github.com/leandrosflora/renegotiation-service) |
 | Core Bancário (mock) | sem repositório próprio — pasta local `core-bancario-mock/` |
+| Knowledge Service | [knowledge-service](https://github.com/leandrosflora/knowledge-service) |
+| Conversation Memory Service | [conversation-memory-service](https://github.com/leandrosflora/conversation-memory-service) |
+| Audit Service (mock) | sem repositório próprio — pasta local `audit-service-mock/` |
 
 Detalhe de responsabilidades, APIs e regras de negócio de cada um em [`docs/services/`](docs/services/).
 
@@ -76,7 +80,7 @@ Detalhe de responsabilidades, APIs e regras de negócio de cada um em [`docs/ser
 
 ## Dados e bancos
 
-Só o Kafka é efetivamente usado por código de aplicação hoje — PostgreSQL, MongoDB e Redis estão provisionados (com schema pronto) mas não consumidos por nenhum serviço implementado. Detalhe em [`docs/contracts/data-stores.md`](docs/contracts/data-stores.md).
+Kafka, MongoDB, Redis e OpenSearch são efetivamente usados por código de aplicação hoje: MongoDB e Redis pelo `conversation-memory-service` (sessão de conversa e histórico/memória de longo prazo), OpenSearch pelo `knowledge-service` (busca vetorial k-NN de FAQ). PostgreSQL segue apenas provisionado (com schema pronto), sem nenhum serviço implementado o consumindo ainda. Detalhe em [`docs/contracts/data-stores.md`](docs/contracts/data-stores.md).
 
 ## Contratos
 
