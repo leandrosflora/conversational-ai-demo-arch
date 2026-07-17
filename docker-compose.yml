@@ -57,6 +57,29 @@ services:
     networks:
       - conversational-ai
 
+  opensearch:
+    image: opensearchproject/opensearch:3.7.0
+    container_name: conversational-ai-opensearch
+    environment:
+      discovery.type: single-node
+      # Local-dev-only: no external exposure beyond this Docker network, same trust model
+      # as the trivial admin/admin credentials already used for Redis/Mongo/Postgres above.
+      # Enabling the security plugin instead would require OPENSEARCH_INITIAL_ADMIN_PASSWORD
+      # (mandatory from OpenSearch 2.12 onward) for no benefit in this environment.
+      DISABLE_SECURITY_PLUGIN: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+    ports:
+      - "9200:9200"
+    volumes:
+      - opensearch-data:/usr/share/opensearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\"' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 15
+    networks:
+      - conversational-ai
+
   kafka:
     # bitnami/kafka:3.7 was pulled from Docker Hub (Bitnami removed the free-tier tags in 2025).
     # Switched to the official Apache Kafka image, which uses KAFKA_* env vars (no CFG_ prefix)
@@ -281,6 +304,32 @@ services:
     networks:
       - conversational-ai
 
+  knowledge-service:
+    build:
+      context: ../knowledge-service
+    container_name: conversational-ai-knowledge-service
+    ports:
+      - "8500:8500"
+    volumes:
+      # Bind mount (not baked in via the Dockerfile's COPY alone): a PDF dropped into
+      # ../knowledge-service/data/faq_pdfs on the host must be visible to POST /admin/reindex
+      # immediately, without an image rebuild - that's the whole point of that endpoint.
+      - ../knowledge-service/data/faq_pdfs:/app/data/faq_pdfs
+    environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      EMBEDDING_MODEL: ${KNOWLEDGE_EMBEDDING_MODEL:-text-embedding-3-small}
+      OPENSEARCH_URL: http://opensearch:9200
+      OPENSEARCH_INDEX: faq_chunks
+      FAQ_PDF_DIR: data/faq_pdfs
+      SEARCH_TOP_K: "3"
+      MIN_RELEVANCE_SCORE: "0.70"
+      OTEL_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    networks:
+      - conversational-ai
+
   agent-runtime-renegotiation:
     build:
       context: ../agent-runtime-renegotiation
@@ -299,8 +348,6 @@ services:
       # .env is gitignored - never commit a real key here or anywhere else in the repo.
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       TOOL_SERVICE_MCP_URL: http://tool-service-renegotiation:8400/mcp
-      # knowledge-service has no repo in this workspace yet; searches fail closed with an
-      # "unavailable" message per app/tools/knowledge.py instead of breaking the request.
       KNOWLEDGE_SERVICE_BASE_URL: ${KNOWLEDGE_SERVICE_BASE_URL:-http://knowledge-service:8500}
       KNOWLEDGE_SERVICE_RETRY_ATTEMPTS: "2"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
@@ -311,6 +358,11 @@ services:
       kafka:
         condition: service_healthy
       tool-service-renegotiation:
+        condition: service_started
+      # search_knowledge_base already tolerates the Knowledge Service being unreachable
+      # (fails closed to an "unavailable" message, see app/tools/knowledge.py) - this is
+      # just start-order tidiness for a smoother cold start, not a correctness requirement.
+      knowledge-service:
         condition: service_started
     networks:
       - conversational-ai
@@ -342,6 +394,26 @@ services:
         condition: service_started
       audit-service-mock:
         condition: service_started
+    networks:
+      - conversational-ai
+
+  conversation-memory-service:
+    build:
+      context: ../conversation-memory-service
+    container_name: conversational-ai-conversation-memory-service
+    ports:
+      - "8600:8600"
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      SESSION_TTL_SECONDS: "1800"
+      MONGODB_URI: mongodb://conversational_ai_app:conversational_ai_app@mongodb:27017/conversational_ai
+      MONGODB_DATABASE: conversational_ai
+      OTEL_OTLP_ENDPOINT: http://jaeger:4317
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
     networks:
       - conversational-ai
 
@@ -380,6 +452,7 @@ volumes:
   redis-data:
   mongodb-data:
   postgres-data:
+  opensearch-data:
   kafka-data:
   loki-data:
   prometheus-data:

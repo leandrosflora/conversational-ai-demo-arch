@@ -44,7 +44,8 @@ docker compose ps
 | MongoDB | `27017` | histórico de mensagens, memória conversacional, LLM runs, tool calls, RAG |
 | Redis | `6379` | cache / sessão |
 | Kafka | `9092` (interno/containers), `29092` (host) | event streaming |
-| Jaeger UI | `16686` | tracing (OTLP em `4317`/`4318`) — os 5 serviços de aplicação exportam traces (variável `Otel:OtlpEndpoint` nos .NET, `OTEL_OTLP_ENDPOINT` nos Python), formando um único trace distribuído por requisição de ponta a ponta |
+| OpenSearch | `9200` | busca vetorial k-NN (índice `faq_chunks`, usado pelo `knowledge-service`) |
+| Jaeger UI | `16686` | tracing (OTLP em `4317`/`4318`) — os 7 serviços de aplicação exportam traces (variável `Otel:OtlpEndpoint` nos .NET, `OTEL_OTLP_ENDPOINT` nos Python), formando um único trace distribuído por requisição de ponta a ponta |
 | Prometheus | `9090` | métricas |
 | Grafana | **`3001`** | dashboards (login `admin`/`admin`) |
 | Loki | `3100` | logs |
@@ -137,7 +138,7 @@ source .venv/Scripts/activate
 uvicorn app.main:app --host 127.0.0.1 --port 8100
 ```
 
-Expõe `POST /process`. Chama a OpenAI (precisa de `OPENAI_API_KEY` real — sem ela, a inferência falha e o serviço cai no fallback de handoff com motivo `agent_runtime_unavailable`), o Tool Service via MCP (`:8400`, seção 3.2) e a `KnowledgeService` assumida (`:8500`, inexistente). Esse é FastAPI de verdade (não MCP), então já vem com Swagger UI automático em `http://localhost:8100/docs`, sem precisar de nenhuma configuração extra.
+Expõe `POST /process`. Chama a OpenAI (precisa de `OPENAI_API_KEY` real — sem ela, a inferência falha e o serviço cai no fallback de handoff com motivo `agent_runtime_unavailable`), o Tool Service via MCP (`:8400`, seção 3.2) e o Knowledge Service (`:8500`, seção 3.8) para busca de FAQ. Esse é FastAPI de verdade (não MCP), então já vem com Swagger UI automático em `http://localhost:8100/docs`, sem precisar de nenhuma configuração extra.
 
 Para testar o fluxo completo sem uma chave da OpenAI, defina `MOCK_AGENT_ENABLED=true` (variável de ambiente, ver `Settings.mock_agent_enabled` em `app/config.py`) antes de subir o serviço:
 
@@ -190,17 +191,45 @@ Kafka substituiu o que antes era uma fila em memória entre o webhook e o Orches
 >
 > Esse mesmo teste também expôs um problema separado: o cliente HTTP do `whatsapp-bff` para o Orchestrator (`IOrchestratorClient`) tem um `AttemptTimeout` de 10s: quando o processamento síncrono do Orchestrator (que inclui a chamada real à OpenAI) leva mais que isso, o `whatsapp-bff` cancela a chamada e tenta de novo — e como o Orchestrator não deduplica por `MessageId`, a mesma mensagem inbound pode ser processada duas vezes (duas chamadas ao Agent Runtime/OpenAI, duas tentativas de entrega de resposta). Ver achado detalhado no [relatório de validação](validation/2026-07-13-e2e-journey.md).
 
+### 3.7 Conversation Memory Service (Python) — porta `8600`
+
+```bash
+cd conversation-memory-service
+source .venv/Scripts/activate   # Windows: .venv\Scripts\activate
+uvicorn app.main:app --host 127.0.0.1 --port 8600
+```
+
+Expõe sessão de conversa (`GET`/`PUT`/`DELETE /sessions/{conversation_id}`, Redis, TTL) e memória durável (`POST`/`GET /conversations/{id}/messages` e `GET`/`PUT /users/{id}/memory`, MongoDB, coleções `conversation_messages`/`agent_memory` já provisionadas em `database/conversational-ai-mongodb-init.js`). FastAPI de verdade — Swagger UI automático em `http://localhost:8600/docs`.
+
+Precisa de Redis (`:6379`) e MongoDB (`:27017`) no ar (seção 2) — sem eles, os endpoints correspondentes respondem `503 Service Unavailable` em vez de travar. **Nenhum outro serviço deste workspace chama o Memory Service ainda**: `conversation-orchestrator` e `agent-runtime-renegotiation` continuam com sessão/memória em processo (`ConcurrentDictionary`/`IMemoryCache`); wireá-los para consumir este serviço é um change futuro (ver `openspec/changes/archive/` quando arquivado).
+
+### 3.8 Knowledge Service (Python) — porta `8500`
+
+```bash
+cd knowledge-service
+source .venv/Scripts/activate   # Windows: .venv\Scripts\activate
+uvicorn app.main:app --host 127.0.0.1 --port 8500
+```
+
+Expõe `GET /search?query=...` — o contrato que `agent-runtime-renegotiation`'s `search_knowledge_base` (`app/tools/knowledge.py`) já chama. Na subida (e via `POST /admin/reindex`, a qualquer momento, sem reiniciar), lê todo `.pdf` em `data/faq_pdfs/`, extrai texto (`pypdf`), quebra em chunks e embeda cada um via OpenAI (`text-embedding-3-small`), indexando no OpenSearch (`faq_chunks`, busca k-NN). Reingesta é idempotente por hash de conteúdo do arquivo — só reprocessa o que for novo ou tiver mudado. FastAPI de verdade — Swagger UI automático em `http://localhost:8500/docs`.
+
+Precisa de OpenSearch (`:9200`, seção 2) no ar e de `OPENAI_API_KEY` configurada — sem a chave, a ingestão no startup é pulada (log de aviso, não crash) e `GET /search` responde `503` por requisição; sem OpenSearch, tanto a ingestão quanto `GET /search` respondem/logam `503` em vez de travar. Sem nenhum PDF em `data/faq_pdfs/`, o serviço sobe normalmente e `GET /search` responde `200` com `results: []` para qualquer busca.
+
+> Coloque seus PDFs de FAQ de renegociação em `knowledge-service/data/faq_pdfs/` (ver `README.md` da pasta) antes de subir o serviço, ou rode `POST /admin/reindex` depois de adicioná-los.
+
 ### Mapa de portas — resumo
 
 | Serviço | Porta (dev local, seção 3) | Porta host (`docker compose up -d`) | Downstream que chama |
 |---|---|---|---|
 | whatsapp-bff | `5153` | `5153` | Kafka (`9092`/`29092`, tópico `channel.webhook.received`) → consumido pelo próprio processo → Orchestrator |
 | conversation-orchestrator | `8000` | **`5268`** | AgentRuntime (`8100`), ChannelBff (`5153`), HandoffService (`8200`)* — cliente do AuditService existe mas nunca é chamado (ver nota abaixo) |
-| agent-runtime-renegotiation | `8100` | `8100` | OpenAI (externo, real), ToolService MCP (`8400`), KnowledgeService (`8500`)* |
+| agent-runtime-renegotiation | `8100` | `8100` | OpenAI (externo, real), ToolService MCP (`8400`), KnowledgeService (`8500`) |
 | tool-service-renegotiation | `8400` | `8400` | RenegotiationService (`9400` em dev local / `5266` em container) |
 | renegotiation-service | `9400` | **`5266`** | ClientApi (`9401`), EligibilityApi (`9402`), ContractingApi (`9403`), FormalizationApi (`9404`) — todas servidas pelo `core-bancario-mock` (seção 3.0) |
+| conversation-memory-service | `8600` | `8600` | Redis (`6379`), MongoDB (`27017`) — nenhum outro serviço o chama ainda |
+| knowledge-service | `8500` | `8500` | OpenSearch (`9200`), OpenAI (externo, real, embeddings) — já é chamado de verdade por `agent-runtime-renegotiation` |
 
-`*` = dependência **assumida**, ainda não implementada neste workspace. Erros de indisponibilidade nesses pontos (502, handoff automático, timeouts) são o comportamento esperado e documentado em cada change arquivada (`openspec/changes/archive/`) — todo serviço foi construído para degradar graciosamente (nunca derrubar o processo) quando esses downstream não respondem. As 4 APIs do Core Bancário já têm mock (seção 3.0).
+`*` = dependência **assumida**, ainda não implementada neste workspace. Erros de indisponibilidade nesses pontos (502, handoff automático, timeouts) são o comportamento esperado e documentado em cada change arquivada (`openspec/changes/archive/`) — todo serviço foi construído para degradar graciosamente (nunca derrubar o processo) quando esses downstream não respondem. As 4 APIs do Core Bancário já têm mock (seção 3.0). `knowledge-service` deixou de ser uma dependência assumida do Agent Runtime — é um serviço real agora.
 
 > **Validado em 2026-07-13** ([relatório](validation/2026-07-13-e2e-journey.md)): as portas host de `conversation-orchestrator` (`5268`) e `renegotiation-service` (`5266`) no modo `docker compose up -d` (hardcoded em `docker-compose.yml`, service-a-service sempre usa a rede interna do Docker em `:8080`) não eram documentadas em lugar nenhum — só a porta de dev local (`8000`/`9400`) aparecia aqui e no restante dos docs. Quem sobe o stack inteiro via `docker compose up -d` (o fluxo descrito primeiro no `README.md`) e tenta reproduzir os comandos da seção 4 contra `:8000`/`:9400` recebe conexão recusada. Além disso, a chamada ao `AuditService` a partir do Orchestrator está **comentada no código** (`Application/UseCases/IngestMessageUseCase.cs`) — nunca é executada, então não há "warning engolido" nem chamada real ao `audit-service-mock`, mesmo com o mock no ar. Detalhe em [`docs/services/conversation-orchestrator.md`](services/conversation-orchestrator.md#dependências-síncronas).
 
@@ -210,12 +239,12 @@ Kafka substituiu o que antes era uma fila em memória entre o webhook e o Orches
 
 ### Tracing distribuído (Jaeger)
 
-Os 5 serviços de aplicação exportam spans via OTLP para o Jaeger (seção 2, porta `16686`), formando um único trace por requisição de ponta a ponta (webhook → BFF → Orchestrator → Agent Runtime → Tool Service MCP → Renegotiation Service). Cada serviço aponta pro endpoint OTLP por uma variável própria:
+Os 7 serviços de aplicação exportam spans via OTLP para o Jaeger (seção 2, porta `16686`), formando um único trace por requisição de ponta a ponta (webhook → BFF → Orchestrator → Agent Runtime → Tool Service MCP → Renegotiation Service). `agent-runtime-renegotiation` já chama `knowledge-service` de verdade, então `GET /search` **participa** desse trace de ponta a ponta; `conversation-memory-service` também exporta, mas ainda não participa — nada o chama (ver seção 3.7). Cada serviço aponta pro endpoint OTLP por uma variável própria:
 
 | Serviço | Variável | Default local (`dotnet run`/`uvicorn`) |
 |---|---|---|
 | whatsapp-bff, conversation-orchestrator, renegotiation-service | `Otel:OtlpEndpoint` (appsettings) / `Otel__OtlpEndpoint` (env) | `http://localhost:4317` |
-| agent-runtime-renegotiation, tool-service-renegotiation | `OTEL_OTLP_ENDPOINT` | `http://localhost:4317` |
+| agent-runtime-renegotiation, tool-service-renegotiation, conversation-memory-service, knowledge-service | `OTEL_OTLP_ENDPOINT` | `http://localhost:4317` |
 
 No `docker-compose.yml` todos apontam pra `http://jaeger:4317`. O SDK Strands Agents já vem com instrumentação própria (spans `chat`, `execute_tool`, `execute_event_loop_cycle`, `invoke_agent`) — só de registrar o `TracerProvider` no `agent-runtime-renegotiation`, esses spans já aparecem no trace, sem configuração adicional. O exportador OTLP nunca bloqueia o request se o Jaeger estiver fora do ar (falha silenciosamente, mesma filosofia catch-log-continue do resto da plataforma).
 
@@ -358,7 +387,7 @@ Isso **não** é o Orchestrator falhando em alcançar o Agent Runtime (esse caso
 
 ## 7. O que ainda não existe
 
-- **Memory Service**, **Knowledge Service**, **Handoff Service**: containers/serviços não implementados neste workspace; PostgreSQL e MongoDB já têm o schema pronto para quando forem construídos.
+- **Handoff Service**: container/serviço não implementado neste workspace; PostgreSQL já tem o schema pronto para quando for construído. (**Memory Service** foi implementado — `conversation-memory-service`, seção 3.7 — mas ainda não é chamado por nenhum outro serviço; ver nota na seção 3.7. **Knowledge Service** também foi implementado — `knowledge-service`, seção 3.8 — e já é chamado de verdade por `agent-runtime-renegotiation`.)
 - **Core Bancário real** (Client/Eligibility/Contracting/Formalization APIs): sistema externo de fato, fora do escopo — existe apenas um **mock** local (`core-bancario-mock/`, seção 3.0) com dados fake, para permitir testar o fluxo completo sem `502`.
 - **Audit Service real**: idem — existe apenas um **mock** local (`audit-service-mock/`, seção 3.4) que aceita qualquer `POST /journey-events` e responde `200 OK` sem persistir nada, só para eliminar o warning de indisponibilidade durante testes locais.
 - Uma `OPENAI_API_KEY` real, se você ainda não tiver uma configurada (necessária para o Agent Runtime raciocinar de verdade em vez de cair no fallback de handoff) — use `MOCK_AGENT_ENABLED=true` (seção 3.3) enquanto isso.
