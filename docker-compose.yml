@@ -21,7 +21,13 @@ services:
     image: mongo:7
     container_name: conversational-ai-mongodb
     ports:
-      - "27017:27017"
+      # Host port 27017 collides with a native mongod.exe Windows service already listening
+      # on 127.0.0.1:27017 on this machine - Windows routes loopback traffic to that more
+      # specific bind over Docker's 0.0.0.0:27017, so tools like Compass silently hit the
+      # wrong (much older) MongoDB instead of this container. Mapped to 27018 on the host to
+      # sidestep the conflict; internal container-to-container traffic (mongodb:27017) is
+      # unaffected.
+      - "27018:27017"
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: admin
@@ -382,10 +388,11 @@ services:
       # Service so that path succeeds instead of just being tolerated.
       HandoffService__BaseUrl: ${HANDOFF_SERVICE_BASE_URL:-http://handoff-service:8200}
       AuditService__BaseUrl: http://audit-service-mock:8300
+      ConversationMemory__BaseUrl: http://conversation-memory-service:8600
+      ConversationMemory__TenantId: "00000000-0000-0000-0000-000000000001"
       Kafka__BootstrapServers: kafka:9092
       Kafka__IntentDetectedTopic: intent.detected
       Kafka__ConversationStateChangedTopic: conversation.state_changed
-      Session__TtlMinutes: "30"
       Otel__OtlpEndpoint: http://jaeger:4317
     depends_on:
       kafka:
@@ -393,6 +400,11 @@ services:
       agent-runtime-renegotiation:
         condition: service_started
       audit-service-mock:
+        condition: service_started
+      # Session get/save and message-history append already degrade gracefully if this is
+      # unreachable (see IngestMessageUseCase) - this is start-order tidiness, not a
+      # correctness requirement, matching the same pattern used for knowledge-service.
+      conversation-memory-service:
         condition: service_started
     networks:
       - conversational-ai

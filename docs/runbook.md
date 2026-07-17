@@ -41,7 +41,7 @@ docker compose ps
 | Serviço | Porta(s) host | Uso |
 |---|---|---|
 | PostgreSQL | `5432` | estado transacional, auditoria, acordos, handoffs (schemas `identity/conversation/ai/knowledge/integration/ops`) |
-| MongoDB | `27017` | histórico de mensagens, memória conversacional, LLM runs, tool calls, RAG |
+| MongoDB | **`27018`** | histórico de mensagens, memória conversacional, LLM runs, tool calls, RAG |
 | Redis | `6379` | cache / sessão |
 | Kafka | `9092` (interno/containers), `29092` (host) | event streaming |
 | OpenSearch | `9200` | busca vetorial k-NN (índice `faq_chunks`, usado pelo `knowledge-service`) |
@@ -51,6 +51,8 @@ docker compose ps
 | Loki | `3100` | logs |
 
 > **Grafana está em `3001`, não `3000`.** A porta 3000 está no range de portas excluídas do Windows nesta máquina (`netsh interface ipv4 show excludedportrange protocol=tcp` — reservada pelo Hyper-V/WinNAT). Ver seção de Troubleshooting.
+
+> **MongoDB está em `27018`, não `27017`.** Esta máquina tem um `mongod.exe` nativo (serviço do Windows) escutando em `127.0.0.1:27017`; o Windows roteia tráfego de loopback para esse bind mais específico em vez do `0.0.0.0:27017` do Docker, então ferramentas como Compass acabavam conectando nesse Mongo antigo e não neste projeto. Ver seção de Troubleshooting.
 
 ### Credenciais dos bancos
 
@@ -62,7 +64,7 @@ docker compose ps
 
 ```bash
 psql -h localhost -U postgres -d conversational_ai
-mongosh "mongodb://admin:admin@localhost:27017/conversational_ai?authSource=admin"
+mongosh "mongodb://admin:admin@localhost:27018/conversational_ai?authSource=admin"
 ```
 
 ### Inicialização dos bancos
@@ -363,6 +365,16 @@ netsh interface ipv4 show excludedportrange protocol=tcp
 ```
 
 Se `3000` aparecer na lista, mantenha o mapeamento atual (`3001:3000` no compose) ou escolha outra porta livre.
+
+### MongoDB Compass (ou outro client) conecta mas mostra dados/versão errados
+Sintoma típico no Compass: `Server at localhost:27017 reports maximum wire version 7, but this version of the Node.js Driver requires at least 8 (MongoDB 4.2)` — bem mais antigo que a versão real (`mongo:7`, MongoDB 7.x) rodando no container. Isso acontece quando a máquina também tem um `mongod.exe` nativo instalado como serviço do Windows, escutando em `127.0.0.1:27017`; o Windows roteia conexões a `localhost`/`127.0.0.1` para esse bind mais específico em vez do `0.0.0.0:27017` do container Docker. Confirme com:
+
+```bash
+netstat -ano | grep ":27017"
+tasklist //FI "PID eq <pid do listener em 127.0.0.1>"
+```
+
+Se aparecer `mongod.exe` (não um processo do Docker), é esse o conflito. O `docker-compose.yml` deste repositório já mapeia o Mongo do container para a porta host `27018` (não `27017`) justamente por causa disso — conecte o Compass em `localhost:27018`, não `27017`.
 
 ### `docker exec`/`docker run` no Git Bash: "not found" em caminhos como `/opt/kafka/bin/...`
 O Git Bash (MSYS) converte automaticamente argumentos que parecem paths Unix em paths Windows. Prefixe o comando com `MSYS_NO_PATHCONV=1`:

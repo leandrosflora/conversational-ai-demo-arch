@@ -39,7 +39,7 @@ docker compose down -v
 | Serviço | URL/porta local | Credenciais |
 | --- | --- | --- |
 | Redis | `localhost:6379` | - |
-| MongoDB | `localhost:27017` | `admin/admin` |
+| MongoDB | `localhost:27018` | `admin/admin` |
 | PostgreSQL | `localhost:5432` | `postgres/postgres` |
 | Kafka | `localhost:29092` | - |
 | Jaeger UI | http://localhost:16686 | - |
