@@ -7,7 +7,7 @@ Arquitetura de referência para plataformas de IA conversacional utilizando agen
 - [Contexto de negócio](docs/context/business-context.md) — jornadas, personas e escopo.
 - [C4 nível 1 (contexto)](docs/architecture/c4-context.md) e [diagramas C4](docs/architecture/C4/) (`.puml`/`.svg`/`.png`).
 - [Diagramas de sequência da jornada](docs/architecture/sequence-diagrams.md) — passo a passo técnico, do webhook do WhatsApp até a consulta de débitos/elegibilidade.
-- [Páginas de referência por serviço](docs/services/) — responsabilidade, APIs, eventos e regras de negócio de cada um dos 6 serviços centrais da jornada de renegociação. `audit-service-mock`, `knowledge-service`, `conversation-memory-service` e `conversation-audit-service` ainda não têm página própria aqui — ver `docs/runbook.md` §§3.4, 3.7, 3.8 e 3.9.
+- [Páginas de referência por serviço](docs/services/) — responsabilidade, APIs, eventos e regras de negócio de cada um dos 6 serviços centrais da jornada de renegociação. `knowledge-service`, `conversation-memory-service` e `conversation-audit-service` ainda não têm página própria aqui — ver `docs/runbook.md` §§3.7, 3.8 e 3.9.
 - [Contratos](docs/contracts/) — mapa de serviços, matriz de eventos Kafka, datastores.
 - [ADRs](docs/adr/) — decisões de arquitetura já implementadas no código.
 - [Arquitetura de segurança](docs/security/security-architecture.md).
@@ -70,7 +70,6 @@ O Prometheus coleta métricas dele mesmo, do Jaeger e de uma aplicação exposta
 | Core Bancário (mock) | sem repositório próprio — pasta local `core-bancario-mock/` |
 | Knowledge Service | [knowledge-service](https://github.com/leandrosflora/knowledge-service) |
 | Conversation Memory Service | [conversation-memory-service](https://github.com/leandrosflora/conversation-memory-service) |
-| Audit Service (mock) | sem repositório próprio — pasta local `audit-service-mock/` |
 | Conversation Audit Service | [conversation-audit-service](https://github.com/leandrosflora/conversation-audit-service) |
 
 Detalhe de responsabilidades, APIs e regras de negócio de cada um em [`docs/services/`](docs/services/).

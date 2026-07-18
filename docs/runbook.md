@@ -1,6 +1,6 @@
 # Runbook — Ambiente Local
 
-Guia operacional para subir, verificar e depurar o ambiente local completo da Plataforma de IA Conversacional: infraestrutura (Docker Compose) + os 5 serviços de aplicação implementados até o momento + os mocks do Core Bancário e do Audit Service.
+Guia operacional para subir, verificar e depurar o ambiente local completo da Plataforma de IA Conversacional: infraestrutura (Docker Compose) + os serviços de aplicação implementados até o momento + o mock do Core Bancário.
 
 Repositórios (todos irmãos, na raiz do workspace `whatsapp/`):
 
@@ -12,7 +12,6 @@ Repositórios (todos irmãos, na raiz do workspace `whatsapp/`):
 | Tool Service (MCP) | `tool-service-renegotiation/` | Python / MCP (FastMCP) | não |
 | Renegotiation Service | `renegotiation-service/` | .NET 8 | não |
 | Core Bancário (mock) | `core-bancario-mock/` | .NET 8 | não |
-| Audit Service (mock) | `audit-service-mock/` | .NET 8 | não |
 | Conversation Audit Service | `conversation-audit-service/` | .NET 8 | não |
 | Infraestrutura | `conversational-ai-demo-arch/` | Docker Compose | sim |
 
@@ -151,14 +150,9 @@ MOCK_AGENT_ENABLED=true uvicorn app.main:app --host 127.0.0.1 --port 8100
 
 Isso substitui a chamada à OpenAI por uma decisão determinística por palavra-chave (`app/agent/mock.py`) — útil para exercitar webhook → BFF → Orchestrator → Agent Runtime → resposta de ponta a ponta sem depender do modelo real. **Cuidado com a confusão de nomes:** `agent_runtime_unavailable` é usado tanto pelo Agent Runtime (quando a chamada à OpenAI falha, `RequiresHandoff=true` mas `HTTP 200`) quanto pelo sentinel do lado do Orchestrator (`AgentRuntimeResult.Unavailable()`, quando o processo nem responde) — os dois têm a mesma string de motivo mas origens diferentes; veja o log de qual dos dois serviços para diagnosticar.
 
-### 3.4 Audit Service (mock, .NET) — porta `8300`
+### 3.4 Audit Service — porta `8300`
 
-```bash
-cd audit-service-mock
-dotnet run
-```
-
-`Program.cs` já fixa a porta via `UseUrls("http://0.0.0.0:8300")`, então não precisa de `--urls`. Aceita qualquer `POST /journey-events` e responde sempre `200 OK`, logando o evento recebido — elimina o warning "Failed to record journey audit event" que o `conversation-orchestrator` loga quando esse downstream está inacessível. Também está wireado no `docker-compose.yml` (serviço `audit-service-mock`) para quem sobe o stack containerizado.
+O mock que ocupava esta seção (`audit-service-mock`) foi removido: nunca teve pasta neste workspace (`docker compose build` já falhava nele) e o Audit Service real agora existe. Ver seção 3.9 (`conversation-audit-service`) para subir o serviço de verdade — mesma porta `8300`, mesmo contrato `POST /journey-events`.
 
 ### 3.5 Conversation Orchestrator (.NET) — porta `8000`
 
@@ -170,6 +164,8 @@ dotnet run --urls http://localhost:8000
 Expõe `POST /messages`. Chama `AgentRuntime` (`:8100`, seção 3.3), `ChannelBff` (`:5153`, seção 3.6) e a ainda-inexistente `HandoffService` (`:8200`).
 
 > **Validado em 2026-07-13** ([relatório](validation/2026-07-13-e2e-journey.md)): apesar de o `AuditServiceClient` estar registrado no DI, a chamada `auditClient.RecordJourneyEventAsync(...)` está comentada em `Application/UseCases/IngestMessageUseCase.cs` — o Orchestrator **nunca** chama o `audit-service-mock` (seção 3.4) na prática, mesmo o mock estando no ar e respondendo `200 OK`/logando quando chamado diretamente. Ver detalhe em [`docs/services/conversation-orchestrator.md`](services/conversation-orchestrator.md#dependências-síncronas).
+>
+> **Atualizado em 2026-07-18**: corrigido. A chamada foi descomentada, `AuditService__BaseUrl` agora aponta para o `conversation-audit-service` real (seção 3.9, porta `8300`) em vez do `audit-service-mock` (removido), e cada mensagem processada grava um evento de jornada de verdade em `ops.audit_events`.
 
 ### 3.6 Channel BFF (.NET) — porta `5153` (padrão do `dotnet run`)
 
@@ -229,7 +225,7 @@ dotnet run --urls http://localhost:8300
 
 Expõe `POST /journey-events` — o mesmo contrato que o `AuditServiceClient` do `conversation-orchestrator` já implementa (`ConversationId`, `Intent?`, `Outcome`, `Timestamp`). Cada request bem-sucedido grava uma linha em `ops.audit_events` (PostgreSQL, seção 2), sob o tenant seed `demo-bank` (`00000000-0000-0000-0000-000000000001`); responde `202 Accepted` quando persiste, `400 Bad Request` se faltar `conversationId`/`outcome`/`timestamp`, e `503 Service Unavailable` se o PostgreSQL estiver inacessível.
 
-Precisa de PostgreSQL (`:5432`, seção 2) no ar. **Ocupa a mesma porta host `8300` que o `audit-service-mock` da seção 3.4** — não suba os dois ao mesmo tempo em modo dev local (fora do Docker); no `docker-compose.yml` isso também não é um conflito prático hoje porque `audit-service-mock` não tem pasta neste workspace (`docker compose build` já falha nele). **Nenhum outro serviço deste workspace chama este serviço ainda**: o cliente já existe em `conversation-orchestrator` (`IAuditServiceClient`/`AuditServiceClient`), mas a chamada está comentada em `IngestMessageUseCase.cs` e o `AuditService:BaseUrl` configurado aponta para `audit-service-mock:8300`, não para este serviço real — repontar essa configuração e descomentar a chamada é trabalho de um change de integração futuro (mesmo padrão da nota na seção 3.7 para o Memory Service).
+Precisa de PostgreSQL (`:5432`, seção 2) no ar. **É chamado de verdade pelo `conversation-orchestrator`**: `AuditServiceClient` grava um evento de jornada (`POST /journey-events`) ao final de `IngestMessageUseCase.ExecuteAsync`, para toda mensagem processada — falha aqui é best-effort (logada, nunca derruba o request ao cliente), com timeout próprio de 5s.
 
 ### Mapa de portas — resumo
 
@@ -242,11 +238,13 @@ Precisa de PostgreSQL (`:5432`, seção 2) no ar. **Ocupa a mesma porta host `83
 | renegotiation-service | `9400` | **`5266`** | ClientApi (`9401`), EligibilityApi (`9402`), ContractingApi (`9403`), FormalizationApi (`9404`) — todas servidas pelo `core-bancario-mock` (seção 3.0) |
 | conversation-memory-service | `8600` | `8600` | Redis (`6379`), MongoDB (`27017`) — nenhum outro serviço o chama ainda |
 | knowledge-service | `8500` | `8500` | OpenSearch (`9200`), OpenAI (externo, real, embeddings) — já é chamado de verdade por `agent-runtime-renegotiation` |
-| conversation-audit-service | `8300` | `8300` | PostgreSQL (`5432`) — nenhum outro serviço o chama ainda (o `AuditServiceClient` do Orchestrator existe, mas está comentado e configurado para `audit-service-mock`, não para este) |
+| conversation-audit-service | `8300` | `8300` | PostgreSQL (`5432`) — já é chamado de verdade pelo `conversation-orchestrator` (`AuditServiceClient`, ao fim de `IngestMessageUseCase.ExecuteAsync`) |
 
-`*` = dependência **assumida**, ainda não implementada neste workspace. Erros de indisponibilidade nesses pontos (502, handoff automático, timeouts) são o comportamento esperado e documentado em cada change arquivada (`openspec/changes/archive/`) — todo serviço foi construído para degradar graciosamente (nunca derrubar o processo) quando esses downstream não respondem. As 4 APIs do Core Bancário já têm mock (seção 3.0). `knowledge-service` deixou de ser uma dependência assumida do Agent Runtime — é um serviço real agora.
+`*` = dependência **assumida**, ainda não implementada neste workspace. Erros de indisponibilidade nesses pontos (502, handoff automático, timeouts) são o comportamento esperado e documentado em cada change arquivada (`openspec/changes/archive/`) — todo serviço foi construído para degradar graciosamente (nunca derrubar o processo) quando esses downstream não respondem. As 4 APIs do Core Bancário já têm mock (seção 3.0). `knowledge-service` deixou de ser uma dependência assumida do Agent Runtime — é um serviço real agora, e o mesmo vale agora para `conversation-audit-service` em relação ao Orchestrator.
 
-> **Validado em 2026-07-13** ([relatório](validation/2026-07-13-e2e-journey.md)): as portas host de `conversation-orchestrator` (`5268`) e `renegotiation-service` (`5266`) no modo `docker compose up -d` (hardcoded em `docker-compose.yml`, service-a-service sempre usa a rede interna do Docker em `:8080`) não eram documentadas em lugar nenhum — só a porta de dev local (`8000`/`9400`) aparecia aqui e no restante dos docs. Quem sobe o stack inteiro via `docker compose up -d` (o fluxo descrito primeiro no `README.md`) e tenta reproduzir os comandos da seção 4 contra `:8000`/`:9400` recebe conexão recusada. Além disso, a chamada ao `AuditService` a partir do Orchestrator está **comentada no código** (`Application/UseCases/IngestMessageUseCase.cs`) — nunca é executada, então não há "warning engolido" nem chamada real ao `audit-service-mock`, mesmo com o mock no ar. Detalhe em [`docs/services/conversation-orchestrator.md`](services/conversation-orchestrator.md#dependências-síncronas).
+> **Validado em 2026-07-13** ([relatório](validation/2026-07-13-e2e-journey.md)): as portas host de `conversation-orchestrator` (`5268`) e `renegotiation-service` (`5266`) no modo `docker compose up -d` (hardcoded em `docker-compose.yml`, service-a-service sempre usa a rede interna do Docker em `:8080`) não eram documentadas em lugar nenhum — só a porta de dev local (`8000`/`9400`) aparecia aqui e no restante dos docs. Quem sobe o stack inteiro via `docker compose up -d` (o fluxo descrito primeiro no `README.md`) e tenta reproduzir os comandos da seção 4 contra `:8000`/`:9400` recebe conexão recusada. Além disso, a chamada ao `AuditService` a partir do Orchestrator estava **comentada no código** (`Application/UseCases/IngestMessageUseCase.cs`) — nunca era executada, então não havia "warning engolido" nem chamada real ao `audit-service-mock`, mesmo com o mock no ar. Detalhe em [`docs/services/conversation-orchestrator.md`](services/conversation-orchestrator.md#dependências-síncronas).
+>
+> **Atualizado em 2026-07-18**: a chamada foi descomentada e repontada para o `conversation-audit-service` real (seção 3.9) — o gap descrito acima não existe mais.
 
 `whatsapp-bff` é o único serviço que depende do Kafka da infraestrutura (seção 2) para funcionar, e não só para publicar eventos de auditoria: sem Kafka no ar, o webhook responde `503` (não aceita a entrega) em vez de `200`.
 
@@ -254,7 +252,7 @@ Precisa de PostgreSQL (`:5432`, seção 2) no ar. **Ocupa a mesma porta host `83
 
 ### Tracing distribuído (Jaeger)
 
-Os 8 serviços de aplicação exportam spans via OTLP para o Jaeger (seção 2, porta `16686`), formando um único trace por requisição de ponta a ponta (webhook → BFF → Orchestrator → Agent Runtime → Tool Service MCP → Renegotiation Service). `agent-runtime-renegotiation` já chama `knowledge-service` de verdade, então `GET /search` **participa** desse trace de ponta a ponta; `conversation-memory-service` e `conversation-audit-service` também exportam, mas nenhum dos dois participa de um trace de ponta a ponta ainda — nada os chama (ver seções 3.7 e 3.9). Cada serviço aponta pro endpoint OTLP por uma variável própria:
+Os 8 serviços de aplicação exportam spans via OTLP para o Jaeger (seção 2, porta `16686`), formando um único trace por requisição de ponta a ponta (webhook → BFF → Orchestrator → Agent Runtime → Tool Service MCP → Renegotiation Service). `agent-runtime-renegotiation` já chama `knowledge-service` de verdade, então `GET /search` **participa** desse trace de ponta a ponta; o mesmo agora vale para `conversation-audit-service` (`conversation-orchestrator` já exporta `AddHttpClientInstrumentation()`, então a chamada a `POST /journey-events` carrega o contexto de trace). `conversation-memory-service` também exporta, mas ainda não participa — nada o chama (ver seção 3.7). Cada serviço aponta pro endpoint OTLP por uma variável própria:
 
 | Serviço | Variável | Default local (`dotnet run`/`uvicorn`) |
 |---|---|---|
@@ -263,7 +261,7 @@ Os 8 serviços de aplicação exportam spans via OTLP para o Jaeger (seção 2, 
 
 No `docker-compose.yml` todos apontam pra `http://jaeger:4317`. O SDK Strands Agents já vem com instrumentação própria (spans `chat`, `execute_tool`, `execute_event_loop_cycle`, `invoke_agent`) — só de registrar o `TracerProvider` no `agent-runtime-renegotiation`, esses spans já aparecem no trace, sem configuração adicional. O exportador OTLP nunca bloqueia o request se o Jaeger estiver fora do ar (falha silenciosamente, mesma filosofia catch-log-continue do resto da plataforma).
 
-Os mocks (`core-bancario-mock`, `audit-service-mock`) não têm instrumentação — são test doubles simples, sem latência real para decompor.
+O mock (`core-bancario-mock`) não tem instrumentação — é um test double simples, sem latência real para decompor.
 
 ---
 
@@ -304,11 +302,11 @@ curl "http://localhost:9400/contracts/contract-1/eligibility"
 # Esperado: 200 OK, {"eligible":true,"reason":null}
 # Sem o mock no ar: 502 Bad Gateway — comportamento correto, não é bug
 
-# 5. Audit Service (mock, seção 3.4)
+# 5. Audit Service (seção 3.9)
 curl -X POST http://localhost:8300/journey-events \
   -H "Content-Type: application/json" \
   -d '{"conversationId":"5511999990000","intent":null,"outcome":"handoff","timestamp":"2026-01-01T00:00:00Z"}'
-# Esperado: 200 OK
+# Esperado: 202 Accepted, e uma linha nova em ops.audit_events (ver seção 3.9)
 
 # 6. Tracing distribuído: confirma que os 5 serviços exportaram spans pro Jaeger
 curl -s http://localhost:16686/api/services
@@ -389,6 +387,9 @@ tasklist //FI "PID eq <pid do listener em 127.0.0.1>"
 
 Se aparecer `mongod.exe` (não um processo do Docker), é esse o conflito. O `docker-compose.yml` deste repositório já mapeia o Mongo do container para a porta host `27018` (não `27017`) justamente por causa disso — conecte o Compass em `localhost:27018`, não `27017`.
 
+### `conversation-audit-service` (ou qualquer escrita no Postgres) ocasionalmente muito lento ou dá `503`
+Em Docker Desktop no Windows, o disco virtualizado usado pelo volume do Postgres pode ter picos de I/O bem lentos — um `checkpoint` que deveria levar milissegundos já foi observado levando **~51s** no log do container (`docker logs conversational-ai-postgres`, procure por `checkpoint complete: ... total=`). Quando isso acontece durante um `INSERT`, o `conversation-audit-service` responde `503` (ver seção 3.9) e, do lado do `conversation-orchestrator`, o `AuditServiceClient` estoura seu timeout de 5s (`SideEffectCallTimeout`) e loga "Failed to record journey audit event" — ambos são o comportamento *correto* de degradação, não um bug. Fora desses picos, uma chamada de auditoria completa normalmente em menos de 2s. Se isso for frequente na sua máquina, verifique se o antivírus está escaneando o disco virtual do Docker Desktop (VHDX/WSL2) em tempo real, e considere excluí-lo da varredura.
+
 ### `docker exec`/`docker run` no Git Bash: "not found" em caminhos como `/opt/kafka/bin/...`
 O Git Bash (MSYS) converte automaticamente argumentos que parecem paths Unix em paths Windows. Prefixe o comando com `MSYS_NO_PATHCONV=1`:
 
@@ -414,5 +415,5 @@ Isso **não** é o Orchestrator falhando em alcançar o Agent Runtime (esse caso
 
 - **Handoff Service**: container/serviço não implementado neste workspace; PostgreSQL já tem o schema pronto para quando for construído. (**Memory Service** foi implementado — `conversation-memory-service`, seção 3.7 — mas ainda não é chamado por nenhum outro serviço; ver nota na seção 3.7. **Knowledge Service** também foi implementado — `knowledge-service`, seção 3.8 — e já é chamado de verdade por `agent-runtime-renegotiation`.)
 - **Core Bancário real** (Client/Eligibility/Contracting/Formalization APIs): sistema externo de fato, fora do escopo — existe apenas um **mock** local (`core-bancario-mock/`, seção 3.0) com dados fake, para permitir testar o fluxo completo sem `502`.
-- **Audit Service real**: agora existe — `conversation-audit-service` (seção 3.9), que persiste de verdade em `ops.audit_events` (PostgreSQL) — mas ainda não é chamado por nenhum outro serviço: o `AuditServiceClient` do `conversation-orchestrator` está com a chamada comentada em `IngestMessageUseCase.cs` e configurado para o `audit-service-mock` (que sequer tem pasta neste workspace — `docker compose build` falha nele), não para este serviço real. Repontar essa configuração e descomentar a chamada é trabalho de um change de integração futuro, mesmo padrão já usado para o Memory Service.
+- **Audit Service real**: implementado e integrado — `conversation-audit-service` (seção 3.9), que persiste de verdade em `ops.audit_events` (PostgreSQL) — e já é chamado de verdade pelo `conversation-orchestrator` ao fim de cada `IngestMessageUseCase.ExecuteAsync`. O `audit-service-mock` foi removido.
 - Uma `OPENAI_API_KEY` real, se você ainda não tiver uma configurada (necessária para o Agent Runtime raciocinar de verdade em vez de cair no fallback de handoff) — use `MOCK_AGENT_ENABLED=true` (seção 3.3) enquanto isso.

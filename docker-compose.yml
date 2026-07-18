@@ -255,22 +255,10 @@ services:
     networks:
       - conversational-ai
 
-  audit-service-mock:
-    build:
-      context: ../audit-service-mock
-    container_name: conversational-ai-audit-service-mock
-    ports:
-      - "8300:8300"
-    networks:
-      - conversational-ai
-
   # The real Audit Service (see conversation-audit-service/, ADR 0002 hexagonal .NET service),
-  # persisting journey events into ops.audit_events (PostgreSQL). Deliberately reuses port 8300
-  # from audit-service-mock above: that mock has no build context in this workspace (its
-  # ../audit-service-mock folder doesn't exist, so `docker compose build` already fails on it
-  # today), so there's no practical runtime conflict yet - both entries are left as-is here
-  # rather than reconciled, since deciding which one wins is the follow-up integration change's
-  # job (see docs/runbook.md §7 and docs/contracts/data-stores.md).
+  # persisting journey events into ops.audit_events (PostgreSQL). Replaces the audit-service-mock
+  # entry that used to live here - that mock never had a build context in this workspace and is
+  # now called for real by conversation-orchestrator (see AuditService__BaseUrl below).
   conversation-audit-service:
     build:
       context: ../conversation-audit-service
@@ -407,10 +395,10 @@ services:
       AgentRuntime__BaseUrl: http://agent-runtime-renegotiation:8100
       ChannelBff__BaseUrl: http://whatsapp-bff:8080
       # handoff-service has no repo in this workspace yet; calls will fail after 2 retries and
-      # are logged, without crashing the orchestrator. audit-service-mock (below) covers Audit
-      # Service so that path succeeds instead of just being tolerated.
+      # are logged, without crashing the orchestrator. conversation-audit-service (below) covers
+      # Audit Service so that path succeeds for real instead of just being tolerated.
       HandoffService__BaseUrl: ${HANDOFF_SERVICE_BASE_URL:-http://handoff-service:8200}
-      AuditService__BaseUrl: http://audit-service-mock:8300
+      AuditService__BaseUrl: http://conversation-audit-service:8080
       ConversationMemory__BaseUrl: http://conversation-memory-service:8600
       ConversationMemory__TenantId: "00000000-0000-0000-0000-000000000001"
       Kafka__BootstrapServers: kafka:9092
@@ -422,7 +410,7 @@ services:
         condition: service_healthy
       agent-runtime-renegotiation:
         condition: service_started
-      audit-service-mock:
+      conversation-audit-service:
         condition: service_started
       # Session get/save and message-history append already degrade gracefully if this is
       # unreachable (see IngestMessageUseCase) - this is start-order tidiness, not a
