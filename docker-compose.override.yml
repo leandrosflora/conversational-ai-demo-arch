@@ -3,10 +3,105 @@ services:
     volumes:
       - ./database/conversational-ai-postgres-p0-idempotency.sql:/docker-entrypoint-initdb.d/002-p0-idempotency.sql:ro
 
+  kafka-init:
+    command: >
+      "
+      for topic in
+        channel.message.received
+        channel.message.status
+        channel.webhook.received
+        channel.webhook.received.retry
+        channel.webhook.received.dlq
+        intent.detected
+        conversation.state_changed
+        agent.events
+        tool.executed;
+      do
+        /opt/kafka/bin/kafka-topics.sh
+          --bootstrap-server kafka:9092
+          --create --if-not-exists
+          --topic \"$$topic\"
+          --partitions 3
+          --replication-factor 1;
+      done
+      "
+
+  whatsapp-bff:
+    environment:
+      InternalAuth__Issuer: conversational-ai-platform
+      InternalAuth__ServiceName: whatsapp-bff
+      InternalAuth__SigningKey: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
+      InternalAuth__TokenTtlSeconds: "300"
+      Orchestrator__TenantId: ${DEFAULT_TENANT_ID:-00000000-0000-0000-0000-000000000001}
+      Kafka__RawWebhookRetryTopic: channel.webhook.received.retry
+      Kafka__RawWebhookDeadLetterTopic: channel.webhook.received.dlq
+      Kafka__MaxDeliveryAttempts: "5"
+      Kafka__RetryBackoffSeconds: "2"
+
   conversation-orchestrator:
     environment:
+      InternalAuth__Issuer: conversational-ai-platform
+      InternalAuth__ServiceName: conversation-orchestrator
+      InternalAuth__SigningKey: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
+      InternalAuth__TokenTtlSeconds: "300"
       Postgres__ConnectionString: Host=postgres;Port=5432;Database=conversational_ai;Username=postgres;Password=postgres
       Postgres__InboxLeaseSeconds: "300"
     depends_on:
       postgres:
         condition: service_healthy
+
+  agent-runtime-renegotiation:
+    environment:
+      INTERNAL_AUTH_ENABLED: "true"
+      INTERNAL_AUTH_ISSUER: conversational-ai-platform
+      INTERNAL_AUTH_SERVICE_NAME: agent-runtime-renegotiation
+      INTERNAL_AUTH_SIGNING_KEY: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
+      INTERNAL_AUTH_TOKEN_TTL_SECONDS: "300"
+      TOOL_SERVICE_AUDIENCE: tool-service-renegotiation
+      KNOWLEDGE_SERVICE_AUDIENCE: knowledge-service
+
+  tool-service-renegotiation:
+    environment:
+      INTERNAL_AUTH_ENABLED: "true"
+      INTERNAL_AUTH_ISSUER: conversational-ai-platform
+      INTERNAL_AUTH_SERVICE_NAME: tool-service-renegotiation
+      INTERNAL_AUTH_SIGNING_KEY: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
+      INTERNAL_AUTH_TOKEN_TTL_SECONDS: "300"
+      RENEGOTIATION_SERVICE_AUDIENCE: renegotiation-service
+
+  renegotiation-service:
+    environment:
+      InternalAuth__Issuer: conversational-ai-platform
+      InternalAuth__ServiceName: renegotiation-service
+      InternalAuth__SigningKey: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
+      InternalAuth__TokenTtlSeconds: "300"
+
+  knowledge-service:
+    environment:
+      INTERNAL_AUTH_ENABLED: "true"
+      INTERNAL_AUTH_ISSUER: conversational-ai-platform
+      INTERNAL_AUTH_SERVICE_NAME: knowledge-service
+      INTERNAL_AUTH_SIGNING_KEY: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
+      INTERNAL_AUTH_TOKEN_TTL_SECONDS: "300"
+      OPENSEARCH_INDEX_PREFIX: faq_chunks
+      DEFAULT_TENANT_ID: ${DEFAULT_TENANT_ID:-00000000-0000-0000-0000-000000000001}
+
+  conversation-memory-service:
+    environment:
+      INTERNAL_AUTH_ENABLED: "true"
+      INTERNAL_AUTH_ISSUER: conversational-ai-platform
+      INTERNAL_AUTH_SERVICE_NAME: conversation-memory-service
+      INTERNAL_AUTH_SIGNING_KEY: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
+      INTERNAL_AUTH_TOKEN_TTL_SECONDS: "300"
+
+  conversation-audit-service:
+    environment:
+      InternalAuth__Issuer: conversational-ai-platform
+      InternalAuth__ServiceName: conversation-audit-service
+      InternalAuth__SigningKey: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
+
+  conversation-handoff-service:
+    environment:
+      InternalAuth__Issuer: conversational-ai-platform
+      InternalAuth__ServiceName: conversation-handoff-service
+      InternalAuth__SigningKey: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
