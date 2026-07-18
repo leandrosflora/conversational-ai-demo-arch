@@ -42,6 +42,8 @@ python -c "import secrets; print(secrets.token_urlsafe(48))"
 
 O Compose falha imediatamente se `INTERNAL_AUTH_SIGNING_KEY` não estiver definido. Em produção, substitua o segredo HMAC compartilhado por workload identity/mTLS ou por chaves assimétricas gerenciadas por um IdP.
 
+> **Validado em 2026-07-18** ([relatório](validation/2026-07-18-p1-hardening-e2e.md)): até essa data, `.env.example` não documentava `INTERNAL_AUTH_SIGNING_KEY` nem `DEFAULT_TENANT_ID` — quem seguisse só o `.env.example` para montar o `.env` local não tinha como saber que essas variáveis existiam ou eram obrigatórias, até o `docker compose` falhar na interpolação com `Set INTERNAL_AUTH_SIGNING_KEY in .env`. Corrigido em `.env.example`.
+
 ## 3. Subida do ambiente
 
 ```bash
@@ -249,3 +251,19 @@ docker compose down -v
 ```
 
 Scripts de inicialização PostgreSQL/Mongo executam somente quando os volumes estão vazios. Os serviços P0 também aplicam migrações idempotentes necessárias para volumes existentes.
+
+## 13. Troubleshooting (achados da validação P1)
+
+Achados de [`validation/2026-07-18-p1-hardening-e2e.md`](validation/2026-07-18-p1-hardening-e2e.md), já corrigidos no código/config deste repositório — registrados aqui como referência rápida caso reapareçam num checkout mais antigo ou numa mudança futura similar.
+
+### `kafka-init` sai com `exit 2` / `whatsapp-bff` nunca sobe
+
+Sintoma: `docker logs conversational-ai-kafka-init` mostra `syntax error near unexpected token` e o `whatsapp-bff` fica parado em `Waiting` (depende de `kafka-init: condition: service_completed_successfully`). Causa: o `command` do `kafka-init` em `docker-compose.override.yml` é um escalar YAML dobrado (`>`) — linhas com a mesma indentação da linha-base viram uma só linha com espaço, mas linhas **mais indentadas** (ex.: cada tópico em sua própria linha, ou cada flag do `kafka-topics.sh` na sua) são preservadas literalmente com quebra de linha, produzindo bash inválido. Ao editar esse `command`, mantenha a lista de tópicos do `for topic in ...; do` e os argumentos do `kafka-topics.sh` cada um em uma única linha (mesma indentação da linha-base) — nunca um item por linha.
+
+### `/health/ready` sempre `503 {"failures":["kafka_unavailable"]}` em `agent-runtime-renegotiation` ou `tool-service-renegotiation`, mesmo com Kafka saudável (`docker compose ps` mostra `healthy`)
+
+Causa: `producer.list_topics(1)` (confluent-kafka-python) passa `1` como o parâmetro posicional `topic` (que espera `str`/`None`), não como `timeout` — `TypeError` engolido pelo `except Exception` do handler. Use sempre `list_topics(timeout=N)` como keyword argument.
+
+### Compose falha com `Set INTERNAL_AUTH_SIGNING_KEY in .env`
+
+Ver §2 — variável obrigatória, gere com `python -c "import secrets; print(secrets.token_urlsafe(48))"` e adicione ao `.env` (não ao `.env.example`, que é versionado).
