@@ -1,0 +1,12 @@
+services:
+  postgres:
+    volumes:
+      - ./database/conversational-ai-postgres-p0-idempotency.sql:/docker-entrypoint-initdb.d/002-p0-idempotency.sql:ro
+
+  conversation-orchestrator:
+    environment:
+      Postgres__ConnectionString: Host=postgres;Port=5432;Database=conversational_ai;Username=postgres;Password=postgres
+      Postgres__InboxLeaseSeconds: "300"
+    depends_on:
+      postgres:
+        condition: service_healthy
