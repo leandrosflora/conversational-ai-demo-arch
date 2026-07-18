@@ -1,0 +1,55 @@
+@startuml
+!include <C4/C4_Container>
+
+title C4 Container — Estado implementado (P1)
+
+Person(customer, "Cliente", "Interage pelo WhatsApp para renegociar débitos.")
+System_Ext(whatsapp, "WhatsApp Cloud API", "Canal externo e entrega de webhooks.")
+System_Ext(openai, "OpenAI", "Chat completion e embeddings.")
+System_Ext(coreMock, "Core Bancário Mock", "Quatro APIs locais de cliente, elegibilidade, contratação e formalização. Ainda não valida JWT.")
+
+System_Boundary(platform, "Plataforma de IA Conversacional — implementada") {
+  Container(channelBff, "whatsapp-bff", ".NET 8", "Valida HMAC do webhook, persiste no Kafka, normaliza canal e envia respostas.")
+  Container(orchestrator, "conversation-orchestrator", ".NET 8", "Inbox PostgreSQL, sessão/jornada, roteamento, auditoria e handoff.")
+  Container(agentRuntime, "agent-runtime-renegotiation", "Python / FastAPI / Strands", "Decisão estruturada, OpenAI, RAG e MCP.")
+  Container(toolService, "tool-service-renegotiation", "Python / FastMCP", "Sete tools governadas e eventos de execução.")
+  Container(renegotiation, "renegotiation-service", ".NET 8", "Fachada de domínio sobre quatro APIs do Core mock.")
+  Container(knowledge, "knowledge-service", "Python / FastAPI", "Ingestão e busca vetorial isolada por tenant.")
+  Container(memory, "conversation-memory-service", "Python / FastAPI", "Sessões Redis e histórico/memória MongoDB isolados por tenant.")
+  Container(audit, "conversation-audit-service", ".NET 8", "Auditoria idempotente no PostgreSQL.")
+  Container(handoff, "conversation-handoff-service", ".NET 8", "Persiste solicitações idempotentes de handoff.")
+
+  ContainerDb(redis, "Redis", "Session store", "Chaves tenant:{tenant}:session:{conversation}.")
+  ContainerDb(mongo, "MongoDB", "Document store", "Histórico e memória com tenantId obrigatório.")
+  ContainerDb(postgres, "PostgreSQL", "Relational store", "Inbox, auditoria e handoffs.")
+  ContainerDb(opensearch, "OpenSearch", "Vector store", "Índice físico separado por tenant.")
+  ContainerQueue(kafka, "Kafka", "Event streaming", "Entrada durável, retry, DLQ e eventos de observabilidade.")
+}
+
+Rel(customer, whatsapp, "Envia/recebe mensagens", "WhatsApp")
+Rel(whatsapp, channelBff, "Webhook assinado HMAC", "HTTPS")
+Rel(channelBff, kafka, "Publica webhook bruto + traceparent", "Kafka")
+Rel(kafka, channelBff, "Consome entrada/retry; poison → DLQ", "Kafka")
+Rel(channelBff, orchestrator, "Mensagem normalizada", "HTTPS + JWT + X-Tenant-Id")
+Rel(orchestrator, agentRuntime, "Processa mensagem", "HTTP + JWT + X-Tenant-Id")
+Rel(orchestrator, memory, "Sessão e histórico", "HTTP + JWT + X-Tenant-Id")
+Rel(orchestrator, audit, "Evento de jornada", "HTTP + JWT + Idempotency-Key")
+Rel(orchestrator, handoff, "Solicitação de handoff", "HTTP + JWT + Idempotency-Key")
+Rel(orchestrator, channelBff, "Resposta ao cliente", "HTTP + JWT + X-Tenant-Id")
+Rel(agentRuntime, openai, "Invoca modelo", "HTTPS")
+Rel(agentRuntime, knowledge, "Busca RAG", "HTTP + JWT + X-Tenant-Id")
+Rel(agentRuntime, toolService, "Executa tools", "MCP/HTTP + JWT + X-Tenant-Id")
+Rel(toolService, renegotiation, "Executa capacidades", "HTTP + JWT + X-Tenant-Id")
+Rel(renegotiation, coreMock, "Consulta/simula/formaliza", "HTTP; JWT enviado, não validado pelo mock")
+Rel(memory, redis, "Sessões", "RESP")
+Rel(memory, mongo, "Histórico/memória", "Mongo wire protocol")
+Rel(knowledge, opensearch, "Embeddings/chunks por tenant", "HTTP")
+Rel(orchestrator, postgres, "Inbox", "SQL")
+Rel(audit, postgres, "Auditoria", "SQL")
+Rel(handoff, postgres, "Pedidos de handoff", "SQL")
+Rel(orchestrator, kafka, "Intenções/estado + trace", "Kafka")
+Rel(agentRuntime, kafka, "Agent events + trace", "Kafka")
+Rel(toolService, kafka, "Tool events + trace", "Kafka")
+Rel(channelBff, whatsapp, "Envia resposta", "HTTPS")
+
+@enduml
