@@ -1,0 +1,63 @@
+@startuml
+!include <C4/C4_Container>
+
+title C4 Container — Arquitetura-alvo de produção
+
+Person(customer, "Cliente")
+Person(agent, "Atendente humano")
+System_Ext(channels, "Canais/BSP", "WhatsApp, app, web e voz.")
+System_Ext(idp, "Identity Provider", "OIDC/OAuth2, workload identity e rotação de chaves.")
+System_Ext(core, "Core Bancário", "APIs reais com autenticação, idempotência e trilha regulatória.")
+System_Ext(attendance, "Plataforma de Atendimento", "Fila humana e desktop do atendente.")
+System_Ext(dataLake, "Data Lake Corporativo", "Analytics, retenção regulatória e modelos de dados.")
+System_Ext(modelGateway, "AI Model Gateway", "Roteamento, políticas, custos e múltiplos provedores.")
+
+System_Boundary(platform, "Plataforma de IA Conversacional — alvo") {
+  Container(gateway, "Security Gateway", "API Gateway / WAF", "mTLS/OAuth2, rate limit, schema validation e proteção DDoS.")
+  Container(channelBff, "Channel BFFs", ".NET", "Adapters por canal e idempotência de entrada.")
+  Container(orchestrator, "Conversation Orchestrator", ".NET", "Saga/inbox/outbox, políticas de jornada e roteamento.")
+  Container(agentRuntime, "Agent Runtime", "Python", "Agentes versionados, guardrails, avaliações e human approval.")
+  Container(toolGateway, "Governed Tool Gateway", "MCP / HTTP", "Catálogo, autorização fina, policy enforcement e aprovação.")
+  Container(domainServices, "Domain Services", ".NET / Java", "Capacidades transacionais idempotentes por domínio.")
+  Container(knowledge, "Knowledge Platform", "RAG", "ACL por documento, data classification e isolamento por tenant.")
+  Container(memory, "Conversation Memory", "Service", "Retenção, consentimento, anonimização e exclusão por tenant.")
+  Container(audit, "Immutable Audit", "Service", "Prompt/model/tool lineage, decisões e evidências imutáveis.")
+  Container(handoff, "Human Handoff", "Service", "Resumo, contexto, SLA e integração bidirecional com atendimento.")
+  Container(policy, "Policy Decision Point", "OPA / Cedar", "ABAC/RBAC para agentes, tools, dados e operações.")
+
+  ContainerDb(transactional, "Transactional DB", "PostgreSQL", "Inbox/outbox, estado, acordos e handoffs.")
+  ContainerDb(document, "Document DB", "MongoDB", "Histórico protegido e payloads.")
+  ContainerDb(vector, "Vector Store", "OpenSearch", "Índices e ACLs por tenant/classificação.")
+  ContainerQueue(eventBus, "Managed Event Bus", "Kafka", "TLS/SASL, schema registry, retry topics e DLQs observadas.")
+  Container(observability, "Observability Platform", "OTel / Prometheus / SIEM", "SLIs/SLOs, custos, segurança e alertas.")
+}
+
+Rel(customer, channels, "Interage")
+Rel(channels, gateway, "Eventos e APIs", "HTTPS")
+Rel(gateway, idp, "Valida identidade e workload")
+Rel(gateway, channelBff, "Requisições autorizadas", "mTLS/OAuth2")
+Rel(channelBff, eventBus, "Entrada durável", "Kafka TLS/SASL")
+Rel(eventBus, orchestrator, "Mensagens e retries", "Kafka")
+Rel(orchestrator, agentRuntime, "Solicita decisão", "mTLS + workload identity")
+Rel(agentRuntime, modelGateway, "Invoca modelos", "HTTPS")
+Rel(agentRuntime, knowledge, "Recupera contexto autorizado")
+Rel(agentRuntime, toolGateway, "Solicita tool")
+Rel(toolGateway, policy, "Decide autorização")
+Rel(toolGateway, domainServices, "Executa operação autorizada")
+Rel(domainServices, core, "Capacidades bancárias idempotentes")
+Rel(orchestrator, memory, "Sessão/histórico")
+Rel(orchestrator, audit, "Evidências e decisões")
+Rel(orchestrator, handoff, "Transfere conversa")
+Rel(handoff, attendance, "Fila, resumo e contexto")
+Rel(attendance, agent, "Atendimento")
+Rel(memory, transactional, "Estado relacional")
+Rel(memory, document, "Histórico")
+Rel(knowledge, vector, "Busca vetorial")
+Rel(orchestrator, eventBus, "Eventos via outbox")
+Rel(audit, dataLake, "Exportação governada")
+Rel(gateway, observability, "Métricas/traces/logs")
+Rel(orchestrator, observability, "SLIs de jornada")
+Rel(agentRuntime, observability, "Tokens, custo, latência e avaliações")
+Rel(toolGateway, observability, "Execuções e violações")
+
+@enduml
