@@ -275,6 +275,26 @@ services:
     networks:
       - conversational-ai
 
+  # The real Handoff Service (see conversation-handoff-service/, ADR 0002 hexagonal .NET
+  # service), persisting handoff requests into conversation.handoffs (PostgreSQL). Unlike the
+  # Audit Service, conversation-orchestrator's HandoffServiceClient was already calling this
+  # host live (unconditionally, never commented out) - it was just always unreachable.
+  conversation-handoff-service:
+    build:
+      context: ../conversation-handoff-service
+    container_name: conversational-ai-conversation-handoff-service
+    ports:
+      - "8200:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Postgres__ConnectionString: Host=postgres;Port=5432;Database=conversational_ai;Username=postgres;Password=postgres
+      Otel__OtlpEndpoint: http://jaeger:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - conversational-ai
+
   renegotiation-service:
     build:
       context: ../renegotiation-service
@@ -394,10 +414,7 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       AgentRuntime__BaseUrl: http://agent-runtime-renegotiation:8100
       ChannelBff__BaseUrl: http://whatsapp-bff:8080
-      # handoff-service has no repo in this workspace yet; calls will fail after 2 retries and
-      # are logged, without crashing the orchestrator. conversation-audit-service (below) covers
-      # Audit Service so that path succeeds for real instead of just being tolerated.
-      HandoffService__BaseUrl: ${HANDOFF_SERVICE_BASE_URL:-http://handoff-service:8200}
+      HandoffService__BaseUrl: ${HANDOFF_SERVICE_BASE_URL:-http://conversation-handoff-service:8080}
       AuditService__BaseUrl: http://conversation-audit-service:8080
       ConversationMemory__BaseUrl: http://conversation-memory-service:8600
       ConversationMemory__TenantId: "00000000-0000-0000-0000-000000000001"
@@ -411,6 +428,8 @@ services:
       agent-runtime-renegotiation:
         condition: service_started
       conversation-audit-service:
+        condition: service_started
+      conversation-handoff-service:
         condition: service_started
       # Session get/save and message-history append already degrade gracefully if this is
       # unreachable (see IngestMessageUseCase) - this is start-order tidiness, not a

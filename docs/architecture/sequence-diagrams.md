@@ -196,10 +196,11 @@ deactivate Orch
 
 **Lacunas / contratos assumidos** (sem implementação neste workspace):
 
-- **Handoff Service** (`:8200`) — cliente HTTP existe no orchestrator com contrato assumido.
 - **Knowledge Service / RAG** (`:8500`) — usado pelo agente para `search_knowledge_base`; formato de resposta é assumido, sem verificação.
 - **Salesforce CRM / Data Lake** — existem apenas nos documentos de arquitetura; nenhum código do repositório modela essa integração.
 
 > **Audit Service** (`:8300`, `conversation-audit-service`) deixou de ser uma lacuna: validado em 2026-07-13 como mock com a chamada do Orchestrator comentada ([relatório](../validation/2026-07-13-e2e-journey.md)), o serviço real foi implementado e integrado em 2026-07-18 — `conversation-orchestrator` já chama `POST /journey-events` de verdade ao fim de cada mensagem processada. Ver [`docs/services/conversation-orchestrator.md`](../services/conversation-orchestrator.md#dependências-síncronas).
+>
+> **Handoff Service** (`:8200`, `conversation-handoff-service`) também deixou de ser uma lacuna: diferente do Audit Service, a chamada do Orchestrator (`POST /handoffs`) nunca esteve comentada — ela só falhava sempre porque apontava para um host sem backend. Implementado e integrado em 2026-07-18: agora aponta para o `conversation-handoff-service` real, e o timeout artificialmente curto que existia só por causa da indisponibilidade permanente foi removido. Ver [`docs/services/conversation-orchestrator.md`](../services/conversation-orchestrator.md#dependências-síncronas).
 
 Toda a cadeia é resiliente por desenho: falhas downstream nunca derrubam o serviço upstream — degradam para handoff (agente) ou `502` (renegotiation-service, apenas quando o Core Bancário está genuinamente inacessível).

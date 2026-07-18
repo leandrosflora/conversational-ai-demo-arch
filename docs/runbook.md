@@ -13,6 +13,7 @@ Repositórios (todos irmãos, na raiz do workspace `whatsapp/`):
 | Renegotiation Service | `renegotiation-service/` | .NET 8 | não |
 | Core Bancário (mock) | `core-bancario-mock/` | .NET 8 | não |
 | Conversation Audit Service | `conversation-audit-service/` | .NET 8 | não |
+| Conversation Handoff Service | `conversation-handoff-service/` | .NET 8 | não |
 | Infraestrutura | `conversational-ai-demo-arch/` | Docker Compose | sim |
 
 Todos os serviços de aplicação já têm `Dockerfile` e estão wireados no `docker-compose.yml` (`build: context: ../<pasta>`), inclusive uns aos outros via `depends_on` — ou seja, `docker compose up -d` (seção 2) sobe o stack **inteiro**, apps incluídos, não só a infraestrutura. Este runbook documenta o fluxo alternativo de dev local (seção 3): rodar cada serviço via `dotnet run`/`uvicorn` fora do Docker, apontando para a infraestrutura em containers — útil para depurar/debugar um serviço de cada vez sem rebuild de imagem a cada mudança de código. Ao rodar os dois modos ao mesmo tempo, cuidado com colisão de porta host (as portas mapeadas no compose para os apps coincidem com as usadas pelo `dotnet run`/`uvicorn` local).
@@ -161,7 +162,7 @@ cd conversation-orchestrator
 dotnet run --urls http://localhost:8000
 ```
 
-Expõe `POST /messages`. Chama `AgentRuntime` (`:8100`, seção 3.3), `ChannelBff` (`:5153`, seção 3.6) e a ainda-inexistente `HandoffService` (`:8200`).
+Expõe `POST /messages`. Chama `AgentRuntime` (`:8100`, seção 3.3), `ChannelBff` (`:5153`, seção 3.6) e o `HandoffService` (`:8200`, seção 3.10) sempre que o Agent Runtime recomenda ou requer handoff humano.
 
 > **Validado em 2026-07-13** ([relatório](validation/2026-07-13-e2e-journey.md)): apesar de o `AuditServiceClient` estar registrado no DI, a chamada `auditClient.RecordJourneyEventAsync(...)` está comentada em `Application/UseCases/IngestMessageUseCase.cs` — o Orchestrator **nunca** chama o `audit-service-mock` (seção 3.4) na prática, mesmo o mock estando no ar e respondendo `200 OK`/logando quando chamado diretamente. Ver detalhe em [`docs/services/conversation-orchestrator.md`](services/conversation-orchestrator.md#dependências-síncronas).
 >
@@ -227,24 +228,36 @@ Expõe `POST /journey-events` — o mesmo contrato que o `AuditServiceClient` do
 
 Precisa de PostgreSQL (`:5432`, seção 2) no ar. **É chamado de verdade pelo `conversation-orchestrator`**: `AuditServiceClient` grava um evento de jornada (`POST /journey-events`) ao final de `IngestMessageUseCase.ExecuteAsync`, para toda mensagem processada — falha aqui é best-effort (logada, nunca derruba o request ao cliente), com timeout próprio de 5s.
 
+### 3.10 Conversation Handoff Service (.NET) — porta `8200`
+
+```bash
+cd conversation-handoff-service
+dotnet run --urls http://localhost:8200
+```
+
+Expõe `POST /handoffs` — o mesmo contrato que o `HandoffServiceClient` do `conversation-orchestrator` já implementa (`ConversationId`, `Reason`). Cada request bem-sucedido grava uma linha em `conversation.handoffs` (PostgreSQL, seção 2): como essa tabela exige uma FK para `conversation.conversations` (que nenhum serviço deste workspace popula de verdade), toda linha aponta para a conversa seed (`70000000-0000-0000-0000-000000000001`) e o ID real da conversa vai em `metadata.externalConversationId`; `target_queue` é sempre `'human-support'`. Responde `202 Accepted` quando persiste, `400 Bad Request` se faltar `conversationId`/`reason`, e `503 Service Unavailable` se o PostgreSQL estiver inacessível.
+
+Precisa de PostgreSQL (`:5432`, seção 2) no ar. **É chamado de verdade pelo `conversation-orchestrator`** — e, diferente do Audit Service, essa chamada nunca esteve comentada: sempre que `RequiresHandoff=true`, `IngestMessageUseCase` chama `POST /handoffs` incondicionalmente. Antes deste serviço existir, `IHandoffServiceClient` tinha timeouts artificialmente curtos (`AttemptTimeout=1s`/`TotalRequestTimeout=3s`) só porque o host era permanentemente inexistente; agora usa a mesma política padrão (10s/30s) dos outros clients.
+
 ### Mapa de portas — resumo
 
 | Serviço | Porta (dev local, seção 3) | Porta host (`docker compose up -d`) | Downstream que chama |
 |---|---|---|---|
 | whatsapp-bff | `5153` | `5153` | Kafka (`9092`/`29092`, tópico `channel.webhook.received`) → consumido pelo próprio processo → Orchestrator |
-| conversation-orchestrator | `8000` | **`5268`** | AgentRuntime (`8100`), ChannelBff (`5153`), HandoffService (`8200`)* — cliente do AuditService existe mas nunca é chamado (ver nota abaixo) |
+| conversation-orchestrator | `8000` | **`5268`** | AgentRuntime (`8100`), ChannelBff (`5153`), HandoffService (`8200`), AuditService (`8300`) — todas chamadas de verdade hoje |
 | agent-runtime-renegotiation | `8100` | `8100` | OpenAI (externo, real), ToolService MCP (`8400`), KnowledgeService (`8500`) |
 | tool-service-renegotiation | `8400` | `8400` | RenegotiationService (`9400` em dev local / `5266` em container) |
 | renegotiation-service | `9400` | **`5266`** | ClientApi (`9401`), EligibilityApi (`9402`), ContractingApi (`9403`), FormalizationApi (`9404`) — todas servidas pelo `core-bancario-mock` (seção 3.0) |
 | conversation-memory-service | `8600` | `8600` | Redis (`6379`), MongoDB (`27017`) — nenhum outro serviço o chama ainda |
 | knowledge-service | `8500` | `8500` | OpenSearch (`9200`), OpenAI (externo, real, embeddings) — já é chamado de verdade por `agent-runtime-renegotiation` |
 | conversation-audit-service | `8300` | `8300` | PostgreSQL (`5432`) — já é chamado de verdade pelo `conversation-orchestrator` (`AuditServiceClient`, ao fim de `IngestMessageUseCase.ExecuteAsync`) |
+| conversation-handoff-service | `8200` | `8200` | PostgreSQL (`5432`) — já é chamado de verdade pelo `conversation-orchestrator` (`HandoffServiceClient`, sempre que `RequiresHandoff=true`) |
 
-`*` = dependência **assumida**, ainda não implementada neste workspace. Erros de indisponibilidade nesses pontos (502, handoff automático, timeouts) são o comportamento esperado e documentado em cada change arquivada (`openspec/changes/archive/`) — todo serviço foi construído para degradar graciosamente (nunca derrubar o processo) quando esses downstream não respondem. As 4 APIs do Core Bancário já têm mock (seção 3.0). `knowledge-service` deixou de ser uma dependência assumida do Agent Runtime — é um serviço real agora, e o mesmo vale agora para `conversation-audit-service` em relação ao Orchestrator.
+Erros de indisponibilidade nesses pontos (502, handoff automático, timeouts) são o comportamento esperado e documentado em cada change arquivada (`openspec/changes/archive/`) — todo serviço foi construído para degradar graciosamente (nunca derrubar o processo) quando esses downstream não respondem. As 4 APIs do Core Bancário já têm mock (seção 3.0). `knowledge-service` deixou de ser uma dependência assumida do Agent Runtime — é um serviço real agora, e o mesmo vale agora para `conversation-audit-service` e `conversation-handoff-service` em relação ao Orchestrator (nenhum destino de `conversation-orchestrator` continua sendo uma dependência assumida — só o `HandoffService` era referenciado com `*` nesta tabela, e não é mais).
 
 > **Validado em 2026-07-13** ([relatório](validation/2026-07-13-e2e-journey.md)): as portas host de `conversation-orchestrator` (`5268`) e `renegotiation-service` (`5266`) no modo `docker compose up -d` (hardcoded em `docker-compose.yml`, service-a-service sempre usa a rede interna do Docker em `:8080`) não eram documentadas em lugar nenhum — só a porta de dev local (`8000`/`9400`) aparecia aqui e no restante dos docs. Quem sobe o stack inteiro via `docker compose up -d` (o fluxo descrito primeiro no `README.md`) e tenta reproduzir os comandos da seção 4 contra `:8000`/`:9400` recebe conexão recusada. Além disso, a chamada ao `AuditService` a partir do Orchestrator estava **comentada no código** (`Application/UseCases/IngestMessageUseCase.cs`) — nunca era executada, então não havia "warning engolido" nem chamada real ao `audit-service-mock`, mesmo com o mock no ar. Detalhe em [`docs/services/conversation-orchestrator.md`](services/conversation-orchestrator.md#dependências-síncronas).
 >
-> **Atualizado em 2026-07-18**: a chamada foi descomentada e repontada para o `conversation-audit-service` real (seção 3.9) — o gap descrito acima não existe mais.
+> **Atualizado em 2026-07-18**: a chamada de auditoria foi descomentada e repontada para o `conversation-audit-service` real (seção 3.9); a chamada de handoff (que nunca esteve comentada, só apontava para um host inexistente) foi repontada para o `conversation-handoff-service` real (seção 3.10), com o timeout artificialmente curto removido. Nenhum dos dois gaps descritos acima existe mais.
 
 `whatsapp-bff` é o único serviço que depende do Kafka da infraestrutura (seção 2) para funcionar, e não só para publicar eventos de auditoria: sem Kafka no ar, o webhook responde `503` (não aceita a entrega) em vez de `200`.
 
@@ -252,11 +265,11 @@ Precisa de PostgreSQL (`:5432`, seção 2) no ar. **É chamado de verdade pelo `
 
 ### Tracing distribuído (Jaeger)
 
-Os 8 serviços de aplicação exportam spans via OTLP para o Jaeger (seção 2, porta `16686`), formando um único trace por requisição de ponta a ponta (webhook → BFF → Orchestrator → Agent Runtime → Tool Service MCP → Renegotiation Service). `agent-runtime-renegotiation` já chama `knowledge-service` de verdade, então `GET /search` **participa** desse trace de ponta a ponta; o mesmo agora vale para `conversation-audit-service` (`conversation-orchestrator` já exporta `AddHttpClientInstrumentation()`, então a chamada a `POST /journey-events` carrega o contexto de trace). `conversation-memory-service` também exporta, mas ainda não participa — nada o chama (ver seção 3.7). Cada serviço aponta pro endpoint OTLP por uma variável própria:
+Os 9 serviços de aplicação exportam spans via OTLP para o Jaeger (seção 2, porta `16686`), formando um único trace por requisição de ponta a ponta (webhook → BFF → Orchestrator → Agent Runtime → Tool Service MCP → Renegotiation Service). `agent-runtime-renegotiation` já chama `knowledge-service` de verdade, então `GET /search` **participa** desse trace de ponta a ponta; o mesmo agora vale para `conversation-audit-service` e `conversation-handoff-service` (`conversation-orchestrator` já exporta `AddHttpClientInstrumentation()`, então as chamadas a `POST /journey-events` e `POST /handoffs` carregam o contexto de trace — a de handoff só aparece nas mensagens em que `RequiresHandoff=true`). `conversation-memory-service` também exporta, mas ainda não participa — nada o chama (ver seção 3.7). Cada serviço aponta pro endpoint OTLP por uma variável própria:
 
 | Serviço | Variável | Default local (`dotnet run`/`uvicorn`) |
 |---|---|---|
-| whatsapp-bff, conversation-orchestrator, renegotiation-service, conversation-audit-service | `Otel:OtlpEndpoint` (appsettings) / `Otel__OtlpEndpoint` (env) | `http://localhost:4317` |
+| whatsapp-bff, conversation-orchestrator, renegotiation-service, conversation-audit-service, conversation-handoff-service | `Otel:OtlpEndpoint` (appsettings) / `Otel__OtlpEndpoint` (env) | `http://localhost:4317` |
 | agent-runtime-renegotiation, tool-service-renegotiation, conversation-memory-service, knowledge-service | `OTEL_OTLP_ENDPOINT` | `http://localhost:4317` |
 
 No `docker-compose.yml` todos apontam pra `http://jaeger:4317`. O SDK Strands Agents já vem com instrumentação própria (spans `chat`, `execute_tool`, `execute_event_loop_cycle`, `invoke_agent`) — só de registrar o `TracerProvider` no `agent-runtime-renegotiation`, esses spans já aparecem no trace, sem configuração adicional. O exportador OTLP nunca bloqueia o request se o Jaeger estiver fora do ar (falha silenciosamente, mesma filosofia catch-log-continue do resto da plataforma).
@@ -413,7 +426,8 @@ Isso **não** é o Orchestrator falhando em alcançar o Agent Runtime (esse caso
 
 ## 7. O que ainda não existe
 
-- **Handoff Service**: container/serviço não implementado neste workspace; PostgreSQL já tem o schema pronto para quando for construído. (**Memory Service** foi implementado — `conversation-memory-service`, seção 3.7 — mas ainda não é chamado por nenhum outro serviço; ver nota na seção 3.7. **Knowledge Service** também foi implementado — `knowledge-service`, seção 3.8 — e já é chamado de verdade por `agent-runtime-renegotiation`.)
+- **Memory Service** foi implementado — `conversation-memory-service`, seção 3.7 — mas ainda não é chamado por nenhum outro serviço; ver nota na seção 3.7. **Knowledge Service** também foi implementado — `knowledge-service`, seção 3.8 — e já é chamado de verdade por `agent-runtime-renegotiation`.
 - **Core Bancário real** (Client/Eligibility/Contracting/Formalization APIs): sistema externo de fato, fora do escopo — existe apenas um **mock** local (`core-bancario-mock/`, seção 3.0) com dados fake, para permitir testar o fluxo completo sem `502`.
 - **Audit Service real**: implementado e integrado — `conversation-audit-service` (seção 3.9), que persiste de verdade em `ops.audit_events` (PostgreSQL) — e já é chamado de verdade pelo `conversation-orchestrator` ao fim de cada `IngestMessageUseCase.ExecuteAsync`. O `audit-service-mock` foi removido.
+- **Handoff Service real**: implementado e integrado — `conversation-handoff-service` (seção 3.10), que persiste de verdade em `conversation.handoffs` (PostgreSQL) — e já é chamado de verdade pelo `conversation-orchestrator` sempre que `RequiresHandoff=true`. Diferente do Audit Service, essa chamada nunca precisou ser descomentada; só precisou de um backend de verdade e do timeout artificialmente curto removido.
 - Uma `OPENAI_API_KEY` real, se você ainda não tiver uma configurada (necessária para o Agent Runtime raciocinar de verdade em vez de cair no fallback de handoff) — use `MOCK_AGENT_ENABLED=true` (seção 3.3) enquanto isso.
