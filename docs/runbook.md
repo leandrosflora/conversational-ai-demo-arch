@@ -46,7 +46,7 @@ docker compose ps
 | Redis | `6379` | cache / sessão |
 | Kafka | `9092` (interno/containers), `29092` (host) | event streaming |
 | OpenSearch | `9200` | busca vetorial k-NN (índice `faq_chunks`, usado pelo `knowledge-service`) |
-| Jaeger UI | `16686` | tracing (OTLP em `4317`/`4318`) — os 7 serviços de aplicação exportam traces (variável `Otel:OtlpEndpoint` nos .NET, `OTEL_OTLP_ENDPOINT` nos Python), formando um único trace distribuído por requisição de ponta a ponta |
+| Jaeger UI | `16686` | tracing (OTLP em `4317`/`4318`) — os 9 serviços de aplicação exportam traces (variável `Otel:OtlpEndpoint` nos .NET, `OTEL_OTLP_ENDPOINT` nos Python), formando um único trace distribuído por requisição de ponta a ponta |
 | Prometheus | `9090` | métricas |
 | Grafana | **`3001`** | dashboards (login `admin`/`admin`) |
 | Loki | `3100` | logs |
@@ -280,7 +280,7 @@ O mock (`core-bancario-mock`) não tem instrumentação — é um test double si
 
 ## 4. Smoke test end-to-end
 
-Com a infra e os 5 serviços no ar (seções 2 e 3):
+Com a infra e os serviços no ar (seções 2 e 3):
 
 ```bash
 # 1. Handshake de verificação do webhook (whatsapp-bff)
@@ -321,9 +321,15 @@ curl -X POST http://localhost:8300/journey-events \
   -d '{"conversationId":"5511999990000","intent":null,"outcome":"handoff","timestamp":"2026-01-01T00:00:00Z"}'
 # Esperado: 202 Accepted, e uma linha nova em ops.audit_events (ver seção 3.9)
 
-# 6. Tracing distribuído: confirma que os 5 serviços exportaram spans pro Jaeger
+# 6. Handoff Service (seção 3.10)
+curl -X POST http://localhost:8200/handoffs \
+  -H "Content-Type: application/json" \
+  -d '{"conversationId":"5511999990000","reason":"agent_recommended"}'
+# Esperado: 202 Accepted, e uma linha nova em conversation.handoffs (ver seção 3.10)
+
+# 7. Tracing distribuído: confirma que os serviços exportaram spans pro Jaeger
 curl -s http://localhost:16686/api/services
-# Esperado: array incluindo whatsapp-bff, conversation-orchestrator,
+# Esperado: array incluindo pelo menos whatsapp-bff, conversation-orchestrator,
 # agent-runtime-renegotiation, tool-service-renegotiation, renegotiation-service
 ```
 

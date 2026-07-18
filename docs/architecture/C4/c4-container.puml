@@ -19,7 +19,7 @@ System_Boundary(platform, "Plataforma de IA Conversacional") {
 
   Container(channelBff, "Channel BFF", ".NET", "Normaliza mensagens do canal e abstrai particularidades do WhatsApp.")
 
-  Container(orchestrator, "Conversation Orchestrator", "Python / FastAPI", "Gerencia sessão, estado, intenção, jornada e roteamento.")
+  Container(orchestrator, "Conversation Orchestrator", ".NET / Minimal API", "Gerencia sessão, estado, intenção, jornada e roteamento.")
 
   Container(agentRuntime, "Agent Runtime", "Python / Strands Agents", "Executa agentes autônomos, planejamento, raciocínio e tool calling.")
 
@@ -48,6 +48,7 @@ Rel(customer, whatsapp, "Envia e recebe mensagens", "WhatsApp")
 Rel(whatsapp, securityGateway, "Encaminha webhooks", "HTTPS")
 Rel(securityGateway, channelBff, "Encaminha mensagens validadas", "HTTPS")
 Rel(channelBff, orchestrator, "Envia mensagem normalizada", "HTTP/JSON")
+Rel(orchestrator, channelBff, "Envia resposta ao cliente", "HTTP/JSON")
 
 Rel(orchestrator, agentRuntime, "Solicita processamento conversacional", "HTTP/JSON")
 Rel(orchestrator, memoryService, "Consulta e atualiza estado da conversa", "HTTP/JSON")
@@ -56,7 +57,7 @@ Rel(orchestrator, handoffService, "Solicita transferência humana", "HTTP/JSON")
 
 Rel(agentRuntime, bedrock, "Invoca modelos fundacionais", "HTTPS")
 Rel(agentRuntime, knowledgeService, "Solicita contexto e FAQ", "HTTP/JSON")
-Rel(agentRuntime, memoryService, "Consulta memória conversacional", "HTTP/JSON")
+Rel(agentRuntime, memoryService, "Consulta memória conversacional (assumido, não implementado)", "HTTP/JSON")
 Rel(agentRuntime, toolService, "Executa tools MCP governadas", "MCP / HTTP")
 
 Rel(knowledgeService, opensearch, "Consulta embeddings e documentos", "HTTPS")
@@ -64,13 +65,14 @@ Rel(knowledgeService, opensearch, "Consulta embeddings e documentos", "HTTPS")
 Rel(toolService, renegotiationService, "Executa capacidades de renegociação", "HTTP/JSON")
 Rel(renegotiationService, core, "Consulta débitos, simula ofertas e formaliza acordos", "HTTPS")
 
-Rel(handoffService, attendance, "Transfere conversa, resumo e contexto", "HTTPS")
+Rel(handoffService, attendance, "Transfere conversa, resumo e contexto (assumido, não implementado)", "HTTPS")
 
 Rel(memoryService, redis, "Consulta sessão ativa", "TCP")
 Rel(memoryService, mongodb, "Persiste histórico e memória", "TCP")
 
-Rel(auditService, postgres, "Persiste auditoria", "SQL")
-Rel(auditService, datalake, "Envia eventos auditáveis", "Batch/Event")
+Rel(auditService, postgres, "Persiste evento de jornada (ops.audit_events)", "SQL")
+Rel(handoffService, postgres, "Persiste pedido de handoff (conversation.handoffs)", "SQL")
+Rel(auditService, datalake, "Envia eventos auditáveis (assumido, não implementado)", "Batch/Event")
 
 Rel(channelBff, kafka, "Publica channel.webhook.received (bruto, antes do ack) e channel.message.received/status", "Kafka")
 Rel(kafka, channelBff, "Consome channel.webhook.received para encaminhar ao Orchestrator (retry até sucesso)", "Kafka")
@@ -78,7 +80,7 @@ Rel(orchestrator, kafka, "Publica intent.detected e conversation events", "Kafka
 Rel(agentRuntime, kafka, "Publica agent events", "Kafka")
 Rel(toolService, kafka, "Publica tool.executed", "Kafka")
 Rel(renegotiationService, kafka, "Publica eventos de renegociação", "Kafka")
-Rel(auditService, kafka, "Consome eventos para auditoria", "Kafka")
+Rel(auditService, kafka, "Consome eventos para auditoria (assumido, não implementado)", "Kafka")
 
 Rel(channelBff, whatsapp, "Envia respostas ao cliente", "HTTPS")
 

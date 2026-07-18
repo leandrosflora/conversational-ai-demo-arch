@@ -1,6 +1,6 @@
 # core-bancario-mock
 
-Repo: nenhum — diferente dos outros 5 serviços, não é um repositório git próprio; vive apenas como pasta local (`core-bancario-mock/`) no workspace de desenvolvimento · Stack: .NET 8, Minimal API, processo único · Portas locais: `9401`–`9404`
+Repo: nenhum — diferente dos demais serviços, não é um repositório git próprio; vive apenas como pasta local (`core-bancario-mock/`) no workspace de desenvolvimento · Stack: .NET 8, Minimal API, processo único · Portas locais: `9401`–`9404`
 
 ## Responsabilidade principal
 
