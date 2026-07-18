@@ -57,7 +57,7 @@ Rel(orchestrator, handoffService, "Solicita transferência humana", "HTTP/JSON")
 
 Rel(agentRuntime, bedrock, "Invoca modelos fundacionais", "HTTPS")
 Rel(agentRuntime, knowledgeService, "Solicita contexto e FAQ", "HTTP/JSON")
-Rel(agentRuntime, memoryService, "Consulta memória conversacional (assumido, não implementado)", "HTTP/JSON")
+Rel(agentRuntime, memoryService, "Consulta histórico recente da conversa (leitura; fatos de longo prazo ainda não lidos)", "HTTP/JSON")
 Rel(agentRuntime, toolService, "Executa tools MCP governadas", "MCP / HTTP")
 
 Rel(knowledgeService, opensearch, "Consulta embeddings e documentos", "HTTPS")

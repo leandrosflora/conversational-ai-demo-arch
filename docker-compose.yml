@@ -387,6 +387,8 @@ services:
       TOOL_SERVICE_MCP_URL: http://tool-service-renegotiation:8400/mcp
       KNOWLEDGE_SERVICE_BASE_URL: ${KNOWLEDGE_SERVICE_BASE_URL:-http://knowledge-service:8500}
       KNOWLEDGE_SERVICE_RETRY_ATTEMPTS: "2"
+      CONVERSATION_MEMORY_SERVICE_BASE_URL: http://conversation-memory-service:8600
+      CONVERSATION_MEMORY_TENANT_ID: "00000000-0000-0000-0000-000000000001"
       KAFKA_BOOTSTRAP_SERVERS: kafka:9092
       KAFKA_AGENT_EVENTS_TOPIC: agent.events
       CONFIDENCE_THRESHOLD: "0.6"
@@ -400,6 +402,10 @@ services:
       # (fails closed to an "unavailable" message, see app/tools/knowledge.py) - this is
       # just start-order tidiness for a smoother cold start, not a correctness requirement.
       knowledge-service:
+        condition: service_started
+      # fetch_recent_history already degrades to an empty history on failure (see
+      # app/context/history.py) - same non-blocking start-order tidiness as knowledge-service.
+      conversation-memory-service:
         condition: service_started
     networks:
       - conversational-ai

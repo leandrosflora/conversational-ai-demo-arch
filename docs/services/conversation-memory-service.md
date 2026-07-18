@@ -4,7 +4,7 @@ Repo: [`leandrosflora/conversation-memory-service`](https://github.com/leandrosf
 
 ## Responsabilidade principal
 
-Memória da plataforma: sessão de conversa ativa (Redis, com TTL) e memória durável (MongoDB) — histórico de mensagens e fatos de memória de longo prazo por usuário. Já é consumido de verdade pelo `conversation-orchestrator` (sessão e histórico); nenhum outro serviço o chama ainda.
+Memória da plataforma: sessão de conversa ativa (Redis, com TTL) e memória durável (MongoDB) — histórico de mensagens e fatos de memória de longo prazo por usuário. Já é consumido de verdade por dois clientes: `conversation-orchestrator` (sessão, e grava o histórico em toda mensagem processada) e `agent-runtime-renegotiation` (lê o histórico recente antes de invocar o agente). Os fatos de memória de longo prazo (`agent_memory`) ainda não têm nenhum leitor/escritor real — nenhum serviço deste workspace decide o que vira um "fato" nem tem um `user_id` para endereçar.
 
 ## Dados que o serviço possui
 
