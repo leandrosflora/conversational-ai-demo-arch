@@ -5,19 +5,28 @@ global:
 scrape_configs:
   - job_name: prometheus
     static_configs:
-      - targets:
-          - prometheus:9090
+      - targets: [prometheus:9090]
 
   - job_name: jaeger
     metrics_path: /metrics
     static_configs:
-      - targets:
-          - jaeger:14269
+      - targets: [jaeger:14269]
 
-  # Use this target for applications running on the host machine.
-  # Expose application metrics on http://localhost:8080/metrics.
-  - job_name: host-apps
+  - job_name: dotnet-services
     metrics_path: /metrics
     static_configs:
       - targets:
-          - host.docker.internal:8080
+          - whatsapp-bff:8080
+          - conversation-orchestrator:8080
+          - renegotiation-service:8080
+          - conversation-audit-service:8080
+          - conversation-handoff-service:8080
+
+  - job_name: python-services
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - agent-runtime-renegotiation:8100
+          - knowledge-service:8500
+          - conversation-memory-service:8600
+          - tool-service-renegotiation:8401
