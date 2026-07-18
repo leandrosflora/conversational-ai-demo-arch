@@ -8,7 +8,7 @@ Orquestra o processamento de uma mensagem inbound de ponta a ponta: recebe a men
 
 ## Dados que o serviço possui
 
-- `ConversationSession` (`ConversationId`, `CreatedAt`, `LastMessageAt`, `JourneyStage`, `LastIntent`) — sessão da conversa; o próprio Orchestrator não a persiste, apenas a lê/escreve via `IConversationMemoryClient` a cada mensagem (ver "Dependências síncronas" abaixo).
+- `ConversationSession` (`ConversationId`, `CreatedAt`, `LastMessageAt`, `JourneyStage`, `LastIntent`) — sessão da conversa; o próprio Orchestrator não a persiste, apenas a lê/escreve via `IConversationMemoryClient` a cada mensagem (ver "Dependências síncronas" abaixo). `JourneyStage` é o enum `JourneyStage` (17 estágios: `Started`, `IdentificationPending`, `AuthenticationPending`, `CustomerIdentified`, `ContractSelectionPending`, `ContractSelected`, `EligibilityChecked`, `SimulationParametersPending`, `ProposalAvailable`, `ProposalSelected`, `ConfirmationPending`, `AgreementProcessing`, `AgreementConfirmed`, `DocumentAvailable`, `Completed`, `HandoffRequested`, `Failed`, `Cancelled`) — serializado como string no wire format do `conversation-memory-service` (ver "Regras de negócio" abaixo para o mecanismo de transição).
 - `InboundChannelMessage` — espelha exatamente o modelo do `whatsapp-bff` (mesma ordem de enum, mesma serialização PascalCase), pois é o contrato de entrada entre os dois serviços.
 
 ## APIs publicadas
@@ -50,7 +50,7 @@ Todos os clientes HTTP síncronos (`agent-runtime-renegotiation`, `whatsapp-bff`
 
 ## Persistência & infraestrutura
 
-- **Sessão da conversa**: não é persistida pelo próprio Orchestrator — vive em `conversation-memory-service` (Redis, TTL server-side). Se o serviço estiver inacessível, `GetOrCreateSessionAsync` degrada para uma sessão nova em memória só para aquela requisição (`JourneyStage="started"`), que se perde ao final do request.
+- **Sessão da conversa**: não é persistida pelo próprio Orchestrator — vive em `conversation-memory-service` (Redis, TTL server-side). Se o serviço estiver inacessível, `GetOrCreateSessionAsync` degrada para uma sessão nova em memória só para aquela requisição (`JourneyStage=Started`), que se perde ao final do request. Um `journeyStage` persistido que não corresponda a nenhum valor do enum (ex.: dado de antes desta mudança) também cai em `Started`, em vez de falhar a requisição.
 - **Histórico de mensagens**: também via `conversation-memory-service` (MongoDB `conversation_messages`) — mensagem inbound e reply outbound são anexadas, cada uma com timeout isolado de 5s.
 - **Auditoria**: via `conversation-audit-service` (PostgreSQL `ops.audit_events`) — um evento de jornada por mensagem processada, com timeout isolado de 5s.
 - **Handoff humano**: via `conversation-handoff-service` (PostgreSQL `conversation.handoffs`) — uma linha por pedido de handoff, na política de resiliência padrão (não tem timeout isolado como memória/auditoria, já que não é chamado em todo request, só quando `RequiresHandoff=true`).
@@ -58,12 +58,16 @@ Todos os clientes HTTP síncronos (`agent-runtime-renegotiation`, `whatsapp-bff`
 
 ## Regras de negócio
 
-1. Ao detectar uma intenção, o `JourneyStage` é forçado para `"processed"`, independentemente do estágio anterior.
-2. Toda sessão nova começa em `JourneyStage = "started"`.
+1. **Máquina de estados real (2026-07-18)**: o LLM do Agent Runtime pode interpretar o que o cliente quis dizer, mas não controla livremente a transição de estágio — o Orchestrator é quem decide se uma transição é válida. O fluxo, por mensagem:
+   - `JourneyTriggerClassifier.Classify(intent)` classifica o `Intent` (texto livre, sem vocabulário fechado) do Agent Runtime em um `JourneyTrigger` reconhecido (ou `None`), por casamento de substring (`cancel`/`desist`→`RequestedCancellation`, `confirm`→`ConfirmedAgreement`, `aceit`/`escolh`→`SelectedProposal`, `proposta`/`proposal`→`ProposalPresented`, `simul`→`RequestedSimulation`, `elegib`→`EligibilityConfirmed`, `contrat`→`SelectedContract`, `identific`/`cpf`→`ProvidedIdentification`, `renegoc`→`RequestedRenegotiation`).
+   - `JourneyStageTransitions.TryGetNext(estágioAtual, trigger)` consulta uma tabela fixa de transições legais; se o par `(estágio, trigger)` não estiver na tabela, a transição é rejeitada (logada em `Information`, `JourneyStage` permanece inalterado).
+   - `RequiresHandoff=true` sempre vence, incondicionalmente, movendo para `HandoffRequested` — mesmo que o intent também classificasse para uma transição legal.
+   - **Cobertura desta versão**: como o Orchestrator não tem visibilidade sobre o resultado real da execução de tools do Agent Runtime (elegibilidade, simulação, confirmação, documento), só 8 dos 17 estágios são alcançáveis pela tabela de transições atual: `Started→IdentificationPending→CustomerIdentified→ContractSelected→EligibilityChecked→SimulationParametersPending→ProposalAvailable→ProposalSelected→AgreementProcessing`, mais `Cancelled` (via `RequestedCancellation`, legal de qualquer estágio não-terminal) e `HandoffRequested` (via `RequiresHandoff`, de qualquer estágio). `AuthenticationPending`, `ContractSelectionPending`, `ConfirmationPending`, `AgreementConfirmed`, `DocumentAvailable`, `Completed` e `Failed` existem no enum mas não têm gatilho alcançável nesta versão — desbloqueá-los requer uma mudança futura em que o Agent Runtime exponha os resultados verificados de suas tool calls.
+2. Toda sessão nova começa em `JourneyStage = Started`.
 3. Resposta ao cliente e handoff humano são mutuamente exclusivos: se `RequiresHandoff=true`, a resposta pelo canal **não** é enviada.
 4. Indisponibilidade do Agent Runtime **sempre** força handoff — não há fallback de resposta automática nesse caso.
 5. Não há cálculo de confiança no próprio Orchestrator: o campo `Confidence` só é repassado ao evento `intent.detected`; a decisão de handoff vem inteiramente do booleano `RequiresHandoff` que o Agent Runtime já calculou.
-6. O `Outcome` binário (`"handoff"` ou `"processed"`) é calculado ao fim de `ExecuteAsync`, logado localmente (`ILogger`) e enviado ao Audit Service (`conversation-audit-service`, `POST /journey-events`) junto com `ConversationId`, `Intent` e um timestamp — ver "Dependências síncronas" acima.
+6. O `Outcome` binário (`"handoff"` ou `"processed"`) é calculado ao fim de `ExecuteAsync`, logado localmente (`ILogger`) e enviado ao Audit Service (`conversation-audit-service`, `POST /journey-events`) junto com `ConversationId`, `Intent` e um timestamp — ver "Dependências síncronas" acima. Esse `Outcome` é independente do `JourneyStage`: reflete apenas se a mensagem terminou em handoff ou em resposta processada.
 
 ## Referências de arquitetura
 
