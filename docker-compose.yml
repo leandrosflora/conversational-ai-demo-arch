@@ -264,6 +264,29 @@ services:
     networks:
       - conversational-ai
 
+  # The real Audit Service (see conversation-audit-service/, ADR 0002 hexagonal .NET service),
+  # persisting journey events into ops.audit_events (PostgreSQL). Deliberately reuses port 8300
+  # from audit-service-mock above: that mock has no build context in this workspace (its
+  # ../audit-service-mock folder doesn't exist, so `docker compose build` already fails on it
+  # today), so there's no practical runtime conflict yet - both entries are left as-is here
+  # rather than reconciled, since deciding which one wins is the follow-up integration change's
+  # job (see docs/runbook.md §7 and docs/contracts/data-stores.md).
+  conversation-audit-service:
+    build:
+      context: ../conversation-audit-service
+    container_name: conversational-ai-conversation-audit-service
+    ports:
+      - "8300:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      Postgres__ConnectionString: Host=postgres;Port=5432;Database=conversational_ai;Username=postgres;Password=postgres
+      Otel__OtlpEndpoint: http://jaeger:4317
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - conversational-ai
+
   renegotiation-service:
     build:
       context: ../renegotiation-service
