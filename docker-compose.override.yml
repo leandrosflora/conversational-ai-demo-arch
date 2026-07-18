@@ -6,23 +6,8 @@ services:
   kafka-init:
     command: >
       "
-      for topic in
-        channel.message.received
-        channel.message.status
-        channel.webhook.received
-        channel.webhook.received.retry
-        channel.webhook.received.dlq
-        intent.detected
-        conversation.state_changed
-        agent.events
-        tool.executed;
-      do
-        /opt/kafka/bin/kafka-topics.sh
-          --bootstrap-server kafka:9092
-          --create --if-not-exists
-          --topic \"$$topic\"
-          --partitions 3
-          --replication-factor 1;
+      for topic in channel.message.received channel.message.status channel.webhook.received channel.webhook.received.retry channel.webhook.received.dlq intent.detected conversation.state_changed agent.events tool.executed; do
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists --topic \"$$topic\" --partitions 3 --replication-factor 1;
       done
       "
 
