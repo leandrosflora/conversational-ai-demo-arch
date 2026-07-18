@@ -1,206 +1,161 @@
-# Diagramas de sequência da jornada
+# Diagramas de sequência — estado implementado P1
 
-Do gatilho de campanha até a consulta de débitos e elegibilidade: como uma mensagem do WhatsApp atravessa o `whatsapp-bff`, o `conversation-orchestrator`, o agente Strands/OpenAI, o servidor MCP e o Core Bancário mock.
+Os diagramas abaixo descrevem somente código implementado. A arquitetura-alvo está separada em `C4/c4-container-target.puml`.
 
-## Legenda
-
-| Notação | Significado |
-|---|---|
-| `->` | Chamada síncrona (HTTP ou MCP) |
-| `-->` | Retorno / resposta a uma chamada síncrona |
-| `->>` | Evento assíncrono / publicação Kafka |
-| `activate` / `deactivate` | Janela de processamento interno |
-| `note` | Observação — comportamento não óbvio a partir do código |
-| `loop` / `alt` | Fragmento que se repete ou depende de uma condição |
-
-**Conceitual** = descrito em [`business-context.md`](../context/business-context.md) / [C4 nível 1](c4-context.md), sem componente técnico implementado neste workspace.
-**Implementado** = verificado no código e nas specs (endpoints, portas e tópicos reais); ver [`runbook.md`](../runbook.md) para subir o ambiente local.
-
----
-
-## A · Entrada por campanha (conceitual)
-
-Salesforce CRM → Data Lake → Automação de Campanha → Cliente → WhatsApp. Nenhum destes componentes existe como código neste workspace — é o gatilho de negócio que antecede o diagrama B.
+## 1. Processamento normal
 
 ```plantuml
 @startuml
 hide footbox
 autonumber
-skinparam sequenceMessageAlign center
-skinparam responseMessageBelowArrow true
-
-title A · Entrada por campanha (conceitual)
-
-participant "Salesforce CRM" as SF
-participant "Data Lake Corporativo" as DL
-participant "Automação de Campanha" as Camp
-actor Cliente
-participant "WhatsApp BSP" as BSP
-participant "Plataforma de IA Conversacional" as Plat
-
-SF -> DL: Disponibiliza base de clientes elegíveis para renegociação
-DL -> Camp: Base de campanha é consumida
-Camp -> Cliente: Envia comunicação de ativação\nEmail, SMS, Instagram ou Facebook
-
-note over Cliente
-Cliente decide responder e é direcionado
-ao WhatsApp oficial do banco.
-end note
-
-Cliente -> BSP: Inicia a conversa no WhatsApp oficial do banco
-BSP -> Plat: Encaminha a mensagem inicial via webhook
-Plat -> Plat: Inicia a jornada de identificação\ne consulta de débitos
-Plat ->> DL: Eventos de jornada para auditoria/analytics\nconceitual, sem serviço implementado
-@enduml
-```
-
----
-
-## B · Identificação do cliente & consulta de débitos/elegibilidade (implementado)
-
-Verificado no código e nas specs OpenSpec. Portas conforme o [`runbook.md`](../runbook.md) — os valores em `launchSettings.json` do Visual Studio não são usados na execução real.
-
-> A entrada via Kafka (`channel.webhook.received` → `KafkaWebhookConsumerService`) substituiu a antiga fila em memória entre o webhook e o Orchestrator: a durabilidade agora sobrevive a um restart/crash do `whatsapp-bff`, e uma indisponibilidade do Orchestrator vira retry com backpressure em vez de perda de mensagem.
-
-```plantuml
-@startuml
-hide footbox
-autonumber
-skinparam sequenceMessageAlign center
-skinparam responseMessageBelowArrow true
-
-title B · Identificação do cliente e consulta de débitos/elegibilidade
 
 actor Cliente
-participant "WhatsApp BSP" as BSP
+participant "WhatsApp Cloud API" as Meta
 participant "whatsapp-bff" as BFF
-queue Kafka
+queue "Kafka\nchannel.webhook.received" as Kafka
 participant "conversation-orchestrator" as Orch
+database "PostgreSQL\nInbox" as Inbox
+participant "conversation-memory-service" as Memory
+database Redis
+database MongoDB
 participant "agent-runtime-renegotiation" as Agent
-participant "tool-service-renegotiation" as Tool
+participant "knowledge-service" as Knowledge
+database OpenSearch
+participant "tool-service-renegotiation" as Tools
 participant "renegotiation-service" as Reneg
-participant "core-bancario-mock" as Core
+participant "Core Bancário Mock" as Core
+participant "conversation-audit-service" as Audit
+participant "conversation-handoff-service" as Handoff
 
-Cliente -> BSP: Envia mensagem\ntexto ou resposta interativa
-BSP -> BFF: POST /webhooks/whatsapp\nassinado com X-Hub-Signature-256
+Cliente -> Meta: mensagem
+Meta -> BFF: POST /webhooks/whatsapp\nX-Hub-Signature-256
+BFF -> BFF: valida HMAC e reserva messageId
+BFF ->> Kafka: payload bruto\ntraceparent/tracestate
+Kafka --> BFF: confirmação de persistência
+BFF -> BFF: marca dedupe como completed
+BFF --> Meta: 200 OK
+
+Kafka ->> BFF: entrega ao consumer\ncontexto W3C extraído
 activate BFF
-BFF -> BFF: Valida HMAC-SHA256\ne deduplica por messageId
-BFF ->> Kafka: Publica channel.webhook.received\npayload bruto, chave = telefone
-BFF --> BSP: 200 OK\n503 se Kafka recusar a publicação
-deactivate BFF
-
-note over BFF,Kafka
-KafkaWebhookConsumerService
-BackgroundService no mesmo processo
-consome o tópico de forma assíncrona.
-end note
-
-Kafka ->> BFF: Entrega channel.webhook.received ao consumer
-BFF -> Orch: POST /messages\nMessageId, From, ConversationId, Type, Text
-
-note right of BFF
-Commit do offset só ocorre se o forward tiver sucesso.
-Se falhar, faz Seek de volta ao mesmo offset
-e retenta a cada aproximadamente 2 segundos.
-end note
-
+BFF -> Orch: POST /messages\nJWT aud=conversation-orchestrator\nX-Tenant-Id
 activate Orch
-Orch -> Orch: Cria ou recupera a sessão da conversa\nTTL 30 min, em memória
-Orch -> Agent: POST /process\nConversationId, JourneyStage, LastIntent, Text
+Orch -> Inbox: acquire(messageId, lease)
+Inbox --> Orch: acquired
+
+Orch -> Memory: POST histórico usuário\nJWT + X-Tenant-Id
+Memory -> MongoDB: insert idempotente por externalMessageId
+Orch -> Memory: GET sessão\nJWT + X-Tenant-Id
+Memory -> Redis: GET tenant:{tenant}:session:{conversation}
+Memory --> Orch: estado da jornada
+
+Orch -> Agent: POST /process\nJWT + X-Tenant-Id + TenantId no payload
 activate Agent
-Agent -> Tool: MCP list_tools()\nstreamable-HTTP /mcp
+Agent -> Knowledge: GET /search\nJWT + X-Tenant-Id
+Knowledge -> OpenSearch: k-NN no índice faq_chunks-{tenant}
+OpenSearch --> Knowledge: chunks do tenant
+Knowledge --> Agent: contexto RAG
 
-loop Uma chamada MCP para cada dado que o agente precisa confirmar
-    Agent -> Tool: call consultar_cliente(cpf)
-    activate Tool
-    Tool -> Reneg: GET /clients/{cpf}
-    activate Reneg
-    Reneg -> Core: ClientApi (:9401)
-    activate Core
-    Core --> Reneg: 200 OK · dados do cliente
-    deactivate Core
-    Reneg --> Tool: 200 OK\nmesmo se o cliente não for encontrado
-    deactivate Reneg
-    Tool ->> Kafka: tool.executed\nCPF mascarado
-    Tool --> Agent: resultado consultar_cliente
-    deactivate Tool
+Agent -> Tools: MCP streamable HTTP\nJWT + X-Tenant-Id
+activate Tools
+Tools -> Reneg: capacidade de domínio\nJWT + X-Tenant-Id
+Reneg -> Core: API mock\nJWT enviado + X-Tenant-Id\n(mock ainda não valida)
+Core --> Reneg: resposta
+Reneg --> Tools: resultado
+Tools ->> Kafka: tool.executed\ntrace + tenant, sem argumentos sensíveis
+Tools --> Agent: resultado da tool
+deactivate Tools
 
-    Agent -> Tool: call consultar_contratos(clientId)
-    activate Tool
-    Tool -> Reneg: GET /clients/{clientId}/contracts
-    activate Reneg
-    Reneg --> Tool: 200 OK · contratos
-    deactivate Reneg
-    Tool ->> Kafka: tool.executed
-    Tool --> Agent: resultado consultar_contratos
-    deactivate Tool
-
-    Agent -> Tool: call consultar_débitos(contractId)
-    activate Tool
-    Tool -> Reneg: GET /contracts/{contractId}/debts
-    activate Reneg
-    Reneg --> Tool: 200 OK · débitos em aberto
-    deactivate Reneg
-    Tool ->> Kafka: tool.executed
-    Tool --> Agent: resultado consultar_débitos
-    deactivate Tool
-
-    Agent -> Tool: call validar_elegibilidade(contractId)
-    activate Tool
-    Tool -> Reneg: GET /contracts/{contractId}/eligibility
-    activate Reneg
-    Reneg -> Core: EligibilityApi (:9402)
-    activate Core
-    Core --> Reneg: 200 OK · eligible / reason
-    deactivate Core
-    Reneg --> Tool: 200 OK\n502 só se Core Bancário estiver inacessível
-    deactivate Reneg
-    Tool ->> Kafka: tool.executed
-    Tool --> Agent: resultado validar_elegibilidade
-    deactivate Tool
-end
-
-Agent ->> Kafka: agent.events\nintent, confidence, requires_handoff
-Agent --> Orch: 200 OK\nIntent, Confidence, ReplyText, RequiresHandoff
+Agent ->> Kafka: agent.events\ntrace + tenant
+Agent --> Orch: decisão estruturada
 deactivate Agent
-Orch ->> Kafka: intent.detected + conversation.state_changed
 
-alt RequiresHandoff = false
-    Orch -> BFF: POST /internal/messages\nTo, Type text, Text replyText
-    activate BFF
-    BFF -> BSP: POST /{phone-number-id}/messages\nGraph API
-    BSP -> Cliente: Entrega a resposta\ndébitos elegíveis apresentados
-    deactivate BFF
+Orch ->> Kafka: intent.detected / state_changed\ntrace + tenant
+Orch -> Memory: PUT sessão + POST resposta\nJWT + X-Tenant-Id
+Memory -> Redis: SET sessão tenant-scoped
+Memory -> MongoDB: append resposta
+
+alt RequiresHandoff = true
+  Orch -> Handoff: POST /handoffs\nJWT + X-Tenant-Id\nIdempotency-Key=handoff:{messageId}
+  Handoff -> PostgreSQL: INSERT ON CONFLICT DO NOTHING
+else resposta automática
+  Orch -> BFF: POST /internal/messages\nJWT + X-Tenant-Id
+  BFF -> Meta: envia resposta
+  Meta -> Cliente: entrega resposta
 end
 
+Orch -> Audit: POST /journey-events\nJWT + X-Tenant-Id\nIdempotency-Key=audit:{messageId}
+Audit -> PostgreSQL: INSERT tenant real\nON CONFLICT DO NOTHING
+Orch -> Inbox: status=completed
+Orch --> BFF: 202 Accepted
 deactivate Orch
+BFF -> Kafka: commit offset
+deactivate BFF
 @enduml
 ```
 
----
+## 2. Retry transitório e DLQ
 
-## Serviços, tópicos e lacunas conhecidas
+```plantuml
+@startuml
+hide footbox
+autonumber
 
-| Serviço | Stack | Porta (dev) |
-|---|---|---|
-| whatsapp-bff | .NET 8 · Minimal API | `5153` |
-| conversation-orchestrator | .NET 8 · Minimal API | `8000` |
-| agent-runtime-renegotiation | Python · FastAPI · Strands + OpenAI | `8100` |
-| tool-service-renegotiation | Python · MCP (FastMCP) | `8400` |
-| renegotiation-service | .NET 8 · Minimal API | `9400` |
-| core-bancario-mock | .NET 8 · 4 APIs mock | `9401`–`9404` |
+queue "channel.webhook.received" as Input
+participant "KafkaWebhookConsumerService" as Consumer
+participant "conversation-orchestrator" as Orch
+queue "channel.webhook.received.retry" as Retry
+queue "channel.webhook.received.dlq" as DLQ
 
-> Portas de "dev local" (`dotnet run`/`uvicorn`, seção 3 do [`runbook.md`](../runbook.md)). Via `docker compose up -d`, `conversation-orchestrator` e `renegotiation-service` são expostos no host em portas diferentes (`5268` e `5266` — hardcoded em `docker-compose.yml`); ver a tabela completa em [`runbook.md` § Mapa de portas](../runbook.md#mapa-de-portas--resumo). A comunicação serviço-a-serviço usa sempre a rede interna do Docker, então esse detalhe só importa para quem testa via `curl` do host.
+Input ->> Consumer: registro + traceparent
+Consumer -> Consumer: extrai trace e lê x-delivery-attempt
 
-**Tópicos Kafka observados:** `channel.webhook.received`, `channel.message.received`, `channel.message.status`, `tool.executed`, `agent.events`, `intent.detected`, `conversation.state_changed`.
+alt JSON inválido ou payload nulo
+  Consumer ->> DLQ: payload original + reason/source metadata
+  DLQ --> Consumer: publish confirmado
+  Consumer -> Input: commit offset original
+else falha transitória
+  Consumer -> Orch: POST /messages
+  Orch --> Consumer: erro/409/indisponível
+  alt tentativa < MaxDeliveryAttempts
+    Consumer ->> Retry: payload + tentativa incrementada
+    Retry --> Consumer: publish confirmado
+    Consumer -> Input: commit offset original
+    Retry ->> Consumer: nova entrega
+  else tentativas esgotadas
+    Consumer ->> DLQ: payload + attempts + reason
+    DLQ --> Consumer: publish confirmado
+    Consumer -> Retry: commit offset
+  end
+else sucesso
+  Consumer -> Orch: POST /messages
+  Orch --> Consumer: 202
+  Consumer -> Input: commit offset
+end
 
-**Lacunas / contratos assumidos** (sem implementação neste workspace):
+note right of Consumer
+Se publicar retry/DLQ falhar,
+o offset original não é commitado
+e o consumer faz Seek/replay.
+end note
+@enduml
+```
 
-- **Knowledge Service / RAG** (`:8500`) — usado pelo agente para `search_knowledge_base`; formato de resposta é assumido, sem verificação.
-- **Salesforce CRM / Data Lake** — existem apenas nos documentos de arquitetura; nenhum código do repositório modela essa integração.
+## 3. Garantias e limites
 
-> **Audit Service** (`:8300`, `conversation-audit-service`) deixou de ser uma lacuna: validado em 2026-07-13 como mock com a chamada do Orchestrator comentada ([relatório](../validation/2026-07-13-e2e-journey.md)), o serviço real foi implementado e integrado em 2026-07-18 — `conversation-orchestrator` já chama `POST /journey-events` de verdade ao fim de cada mensagem processada. Ver [`docs/services/conversation-orchestrator.md`](../services/conversation-orchestrator.md#dependências-síncronas).
->
-> **Handoff Service** (`:8200`, `conversation-handoff-service`) também deixou de ser uma lacuna: diferente do Audit Service, a chamada do Orchestrator (`POST /handoffs`) nunca esteve comentada — ela só falhava sempre porque apontava para um host sem backend. Implementado e integrado em 2026-07-18: agora aponta para o `conversation-handoff-service` real, e o timeout artificialmente curto que existia só por causa da indisponibilidade permanente foi removido. Ver [`docs/services/conversation-orchestrator.md`](../services/conversation-orchestrator.md#dependências-síncronas).
+| Aspecto | Garantia implementada |
+|---|---|
+| Entrada WhatsApp | ACK somente depois do Kafka confirmar |
+| Dedupe BFF | `pending` antes do Kafka; `completed` depois da confirmação |
+| Dedupe Orchestrator | Inbox PostgreSQL com lease e estados |
+| Side effects | Audit/Handoff com `Idempotency-Key` |
+| Kafka poison | DLQ com payload e metadados de origem |
+| Trace Kafka | `traceparent`/`tracestate` propagados e extraídos |
+| Tenant | JWT identifica workload; `X-Tenant-Id` acompanha todas as chamadas |
+| Sessão | chave Redis inclui tenant |
+| RAG | índice físico OpenSearch por tenant |
 
-Toda a cadeia é resiliente por desenho: falhas downstream nunca derrubam o serviço upstream — degradam para handoff (agente) ou `502` (renegotiation-service, apenas quando o Core Bancário está genuinamente inacessível).
+Limites atuais:
+
+- Core mock recebe JWT, mas não o valida.
+- Handoff persiste o pedido, mas não transfere para uma plataforma humana real.
+- Eventos de observabilidade sem consumer funcional continuam sendo trilha assíncrona, não integração de negócio.
