@@ -47,6 +47,7 @@ CREATE TABLE IF NOT EXISTS ops.orchestrator_outbox (
     tenant_id uuid NOT NULL,
     message_id text NOT NULL,
     conversation_id text NOT NULL,
+    journey_version bigint NOT NULL DEFAULT 0,
     effect_type text NOT NULL,
     idempotency_key text NOT NULL,
     payload jsonb NOT NULL,
@@ -63,6 +64,8 @@ CREATE TABLE IF NOT EXISTS ops.orchestrator_outbox (
 
 CREATE INDEX IF NOT EXISTS idx_orchestrator_outbox_dispatch
     ON ops.orchestrator_outbox (status, next_attempt_at, locked_until, created_at);
+CREATE INDEX IF NOT EXISTS idx_orchestrator_outbox_conversation_version
+    ON ops.orchestrator_outbox (tenant_id, conversation_id, journey_version, status);
 
 CREATE TABLE IF NOT EXISTS ops.renegotiation_idempotency (
     tenant_id uuid NOT NULL,
