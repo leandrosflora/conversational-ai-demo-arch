@@ -91,8 +91,7 @@ ALTER TABLE ops.audit_events
 
 DROP INDEX IF EXISTS ops.ux_audit_events_idempotency_key;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_audit_events_tenant_idempotency_key
-    ON ops.audit_events (tenant_id, idempotency_key)
-    WHERE idempotency_key IS NOT NULL;
+    ON ops.audit_events (tenant_id, idempotency_key);
 
 ALTER TABLE conversation.handoffs
     ADD COLUMN IF NOT EXISTS tenant_id uuid;
@@ -101,7 +100,6 @@ ALTER TABLE conversation.handoffs
 
 DROP INDEX IF EXISTS conversation.ux_handoffs_idempotency_key;
 CREATE UNIQUE INDEX IF NOT EXISTS ux_handoffs_tenant_idempotency_key
-    ON conversation.handoffs (tenant_id, idempotency_key)
-    WHERE idempotency_key IS NOT NULL;
+    ON conversation.handoffs (tenant_id, idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_handoffs_tenant_status_requested
     ON conversation.handoffs (tenant_id, status, requested_at DESC);
