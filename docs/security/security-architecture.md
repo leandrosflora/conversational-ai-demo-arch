@@ -1,199 +1,233 @@
-# Arquitetura de segurança — estado implementado P1
+# Arquitetura de segurança — estado implementado P0/P1
 
-Este documento descreve controles **existentes no código** e lacunas restantes. A arquitetura-alvo está em `docs/architecture/C4/c4-container-target.puml`.
+Este documento descreve controles existentes no código. A arquitetura-alvo permanece em `docs/architecture/C4/c4-container-target.puml`.
 
 ## 1. Fronteiras de confiança
 
 | Fronteira | Controle implementado |
 |---|---|
-| WhatsApp → BFF | verify token no handshake e HMAC-SHA256 no corpo do webhook |
-| Serviço → serviço | JWT HS256 curto, com `iss`, `sub`, `aud`, `iat` e `exp` |
-| Tenant → serviço | `X-Tenant-Id` obrigatório e propagado pela cadeia |
-| BFF → Kafka | persistência confirmada antes do ACK; trace W3C nos headers |
-| Operações mutáveis | `Idempotency-Key` e retry automático desabilitado |
-| Dados de sessão/RAG | segregação física/lógica por tenant |
+| WhatsApp → BFF | verify token no handshake e HMAC-SHA256 sobre o corpo original |
+| Serviço → serviço | JWT HS256 curto com `iss`, `sub`, `aud`, `iat`, `exp`, `jti` e `tenant_id` |
+| Tenant → serviço | UUID canônico presente simultaneamente em claim assinada e `X-Tenant-Id` |
+| Agent Runtime → Tool Service | JWT `tool_execution` com conversa, mensagem, estágio, versão e evidência de confirmação |
+| Tool Service → Renegotiation Service | JWT `governed_tool` com tool autorizada e `policy_id` ligado à `Idempotency-Key` |
+| Entrada → negócio | Kafka confirmado antes do ACK; Inbox e estado transacionais |
+| Side effects | Outbox durável, replay at-least-once e deduplicação no destino |
+| Dados | chaves, queries e índices tenant-scoped |
 
 ## 2. Autenticidade do webhook
 
 `whatsapp-bff` valida:
 
-- `hub.verify_token` no `GET /webhooks/whatsapp`;
+- `hub.verify_token` no handshake;
 - `X-Hub-Signature-256` no POST;
-- HMAC-SHA256 calculado sobre os bytes originais do corpo;
-- rejeição com `401` antes de Kafka ou parsing de negócio.
+- HMAC-SHA256 calculado sobre os bytes originais;
+- rejeição antes de parsing de negócio ou publicação Kafka.
 
-O webhook continua público por necessidade do provedor. `/internal/messages` não é público: exige JWT com audiência `whatsapp-bff`.
+O webhook é público por necessidade do provedor. `/internal/messages` é interno e exige JWT, tenant assinado e `Idempotency-Key`.
 
-## 3. Autenticação service-to-service
+## 3. Identidade interna
 
-Serviços P1 validam JWT Bearer com:
+### 3.1 Claims comuns
 
 ```text
-issuer   = conversational-ai-platform
-subject  = serviço chamador
-audience = serviço destino
-exp      = até 300 segundos por padrão
-alg      = HS256
+iss       = conversational-ai-platform
+sub       = serviço chamador
+aud       = serviço destino
+tenant_id = UUID canônico do tenant
+iat/exp   = validade curta
+jti       = identificador do token
+alg       = HS256
 ```
 
-O segredo não é versionado. `docker-compose.override.yml` exige `INTERNAL_AUTH_SIGNING_KEY` no `.env` e falha na interpolação quando ausente.
+O destino compara `tenant_id` com `X-Tenant-Id`. Ausência, UUID vazio, formato inválido ou divergência são rejeitados.
 
-Audiências atuais:
+O body pode repetir tenant para compatibilidade de contrato, mas não é fonte de autoridade.
 
-| Destino | `aud` esperado |
-|---|---|
-| whatsapp-bff | `whatsapp-bff` |
-| conversation-orchestrator | `conversation-orchestrator` |
-| agent-runtime-renegotiation | `agent-runtime-renegotiation` |
-| tool-service-renegotiation | `tool-service-renegotiation` |
-| renegotiation-service | `renegotiation-service` |
-| knowledge-service | `knowledge-service` |
-| conversation-memory-service | `conversation-memory-service` |
-| conversation-audit-service | `conversation-audit-service` |
-| conversation-handoff-service | `conversation-handoff-service` |
+### 3.2 Tokens de execução de tools
 
-### Limitação
+O Agent Runtime emite token `tool_execution` contendo:
 
-HS256 compartilhado melhora a POC, mas não é o estado final desejado. Comprometimento de um serviço expõe a chave usada pelos demais. Produção deve usar uma destas opções:
+- `conversation_id`;
+- `message_id`;
+- `journey_stage`;
+- `journey_version`;
+- `confirmation_message_id`, quando uma confirmação explícita foi reconhecida deterministicamente.
 
-- workload identity com OAuth2 client credentials;
+O Tool Service aceita apenas o caller `agent-runtime-renegotiation` e estabelece o contexto a partir dessas claims.
+
+### 3.3 Prova de policy para o domínio
+
+Depois de autorizar a tool, o Tool Service emite token `governed_tool` com:
+
+- `tool_name`;
+- o mesmo contexto da jornada;
+- `policy_id` igual à chave idempotente da operação.
+
+O Renegotiation Service exige:
+
+- caller `tool-service-renegotiation`;
+- operação assinada correspondente ao endpoint;
+- estágio permitido;
+- `policy_id` igual ao header `Idempotency-Key`;
+- para confirmação, `confirmation_message_id == message_id`.
+
+Assim, prompt ou tool call do LLM não são suficientes para autorizar uma operação financeira.
+
+### Limitação de identidade
+
+O HS256 compartilhado permite que um serviço comprometido assine tokens para outras audiências. Produção deve migrar para:
+
+- workload identity/OAuth2;
 - JWT assimétrico com JWKS e rotação;
 - mTLS/service mesh;
-- identidade nativa da plataforma cloud.
+- credenciais e políticas distintas por workload.
 
-## 4. Endpoints protegidos
+## 4. Multitenancy
 
-Exigem JWT e, para operações de negócio, `X-Tenant-Id`:
+O contrato único de tenant é UUID não vazio em formato canônico.
 
-- `POST /messages`;
-- `POST /process`;
-- MCP/REST do Tool Service;
-- todas as capacidades do Renegotiation Service;
-- `POST /internal/messages`;
-- `GET /search`;
-- `POST /admin/reindex`;
-- APIs de sessão, histórico e memória;
-- `POST /journey-events`;
-- `POST /handoffs`.
-
-Permanecem anônimos:
-
-- webhook/handshake do WhatsApp, protegidos por HMAC/verify token;
-- `/health/live`, `/health/ready`, `/metrics`.
-
-Em uma implantação exposta, métricas e health devem ficar em listener/rede operacional, não na internet pública.
-
-## 5. Multitenancy
-
-### 5.1 Fonte de autoridade
-
-O tenant canônico vem de `X-Tenant-Id` em uma chamada autenticada. Body/query não podem selecionar livremente outro tenant; divergências são rejeitadas.
-
-### 5.2 Memory Service
+### Memory Service
 
 - Redis: `tenant:{tenantId}:session:{conversationId}`;
 - MongoDB: queries incluem `tenantId`;
-- histórico e memória longa rejeitam body com tenant divergente;
-- listagem de mensagens não aceita mais tenant arbitrário em query string.
+- unicidade de mensagens: `(tenantId, externalMessageId)`;
+- body/header divergentes são rejeitados.
 
-### 5.3 Knowledge Service
+### Knowledge Service
 
-- um índice OpenSearch físico por tenant;
-- diretório de ingestão por tenant;
-- tenant diferente do padrão nunca reutiliza o diretório legado compartilhado;
-- `/admin/reindex` exige workload autenticado e tenant.
+- índice físico: `faq_chunks-{uuid-canônico}`;
+- não existe normalização com perda ou colisão de caracteres;
+- diretório de ingestão é tenant-scoped;
+- reindexação exige identidade interna e tenant assinado.
 
-Índice físico foi escolhido para reduzir o risco de vazamento causado por esquecimento de filtro em busca vetorial.
+### PostgreSQL
 
-### 5.4 Audit e Handoff
+- Inbox: `(tenant_id, message_id)`;
+- estado: `(tenant_id, conversation_id)`;
+- Outbox: `(tenant_id, idempotency_key)`;
+- simulação: `(tenant_id, operation, idempotency_key)`;
+- Audit/Handoff: `(tenant_id, idempotency_key)`.
 
-Audit persiste o tenant autenticado em `ops.audit_events.tenant_id`.
+## 5. Integridade e durabilidade
 
-Handoff ainda usa uma conversa seed devido ao modelo atual; o tenant e o ID externo real são preservados no metadata. Isso é compatibilidade de POC, não modelo final.
+### 5.1 Entrada
 
-## 6. Idempotência e integridade
+- o BFF responde ao provedor somente após confirmação Kafka;
+- o consumer usa commit manual;
+- retry e DLQ precisam ser confirmados antes do commit do registro original;
+- poison messages não entram em loop infinito.
 
-- BFF só conclui o dedupe após confirmação do Kafka.
-- Orchestrator usa Inbox PostgreSQL com lease.
-- Audit e Handoff usam índices únicos por `Idempotency-Key`.
-- confirmação de acordo usa chave estável baseada na simulação.
-- clients não repetem automaticamente métodos HTTP inseguros.
-- produtor Kafka da entrada usa idempotência e `acks=all`.
+### 5.2 Estado e efeitos
 
-## 7. Kafka, poison e DLQ
+O Orchestrator conclui o Inbox somente depois de uma transação que:
 
-`whatsapp-bff` possui:
+1. atualiza o estado com versão otimista;
+2. registra todos os efeitos na Outbox;
+3. conclui o Inbox.
 
-- tópico de entrada;
-- tópico de retry durável;
-- DLQ;
-- contador de tentativas em header;
-- limite configurável;
-- commit somente após retry/DLQ confirmado;
-- preservação de payload e origem na DLQ.
+Falha de canal, memória, auditoria, handoff ou Kafka após essa transação não perde a obrigação: o dispatcher mantém o efeito como `failed` e tenta novamente.
 
-JSON inválido e payload nulo são considerados poison e não entram em retry infinito.
+### 5.3 Deduplicação dos efeitos
 
-## 8. PII e logging
+- resposta outbound: Redis, por tenant e chave da Outbox;
+- histórico: índice MongoDB tenant-scoped;
+- Audit/Handoff: índice PostgreSQL tenant-scoped;
+- simulação: resposta persistida por chave e hash do request;
+- confirmação: chave ligada à mensagem de confirmação e simulação.
+
+## 6. Ordenação da jornada
+
+- somente uma mensagem por conversa mantém lease de processamento;
+- a atualização exige a versão esperada;
+- mensagens anteriores ao último `(receivedAt, messageId)` aplicado são classificadas como atrasadas;
+- efeitos carregam `journey_version`;
+- uma versão posterior não é entregue enquanto existir efeito anterior não publicado.
+
+Isso evita que retry em outro tópico avance a máquina de estados fora de ordem.
+
+## 7. Policy de tools
+
+O Tool Service usa allowlist por estágio.
+
+Controles críticos:
+
+- `simular_proposta` somente após seleção/elegibilidade do contrato;
+- `confirmar_acordo` somente em `ProposalSelected` ou `ConfirmationPending`;
+- confirmação exige evidência explícita ligada à mensagem atual;
+- apenas o Agent Runtime pode executar as tools governadas;
+- o Renegotiation Service valida a mesma decisão novamente.
+
+A policy é código determinístico, não prompt.
+
+## 8. Idempotência da simulação
+
+O Renegotiation Service persiste request hash e resposta.
+
+- chave nova: executa uma vez;
+- chave concluída: retorna a resposta persistida;
+- mesma chave com outro request: conflito;
+- chave `processing` ou `failed`: falha fechada.
+
+O comportamento fail-closed existe porque o Core mock ainda não valida a chave. Não há retry automático de uma execução ambígua; é necessária reconciliação administrativa.
+
+## 9. PII e logging
 
 Implementado:
 
-- `tool.executed` não inclui argumentos de tools;
-- exceptions do client de renegociação não registram URL completa;
-- Agent Runtime não registra mais o corpo completo de requests inválidos;
-- métricas usam labels de cardinalidade controlada, sem CPF, contrato ou conversation ID;
-- logs operacionais devem usar tenant, trace ID e correlation ID, não conteúdo da mensagem.
+- eventos de tools não incluem argumentos;
+- métricas não usam tenant, conversation ID, CPF ou conteúdo como label;
+- reason de handoff é normalizado para vocabulário fechado;
+- logs operacionais usam identificadores e trace, não o texto completo.
 
 Ainda necessário:
 
-- redaction centralizada de logs;
+- redaction centralizada;
 - classificação de campos e DLP;
-- política de retenção por tipo de dado;
+- política de retenção e descarte;
 - processo LGPD de acesso, correção e exclusão;
-- criptografia em repouso gerenciada fora do ambiente local.
+- criptografia em repouso gerenciada.
 
-## 9. Segredos
+## 10. Segredos e infraestrutura
 
-Arquivos versionados contêm valores vazios ou placeholders, nunca o segredo real. O ambiente ainda não possui:
+O segredo JWT não é versionado e o Compose falha quando ele não é informado.
 
+Ainda faltam:
+
+- cofre de segredos;
+- rotação e revogação por serviço;
 - secret scanning obrigatório;
-- cofre integrado;
-- rotação automática;
-- revogação por serviço;
-- chaves distintas por ambiente.
+- Kafka TLS/SASL/ACL;
+- segurança do OpenSearch;
+- NetworkPolicy/service mesh;
+- WAF e rate limiting;
+- imagens assinadas e SBOM.
 
-Esses controles são obrigatórios antes de produção.
+## 11. Observabilidade de segurança e consistência
 
-## 10. Health e métricas
+Monitorar:
 
-Todos os serviços acessíveis expõem liveness/readiness/metrics. Readiness falha quando autenticação não está configurada e, conforme o serviço, quando Kafka, PostgreSQL, Redis, MongoDB, OpenSearch ou OpenAI não estão disponíveis/configurados.
+- falhas de autenticação e tenant mismatch;
+- policy denial por tool/estágio;
+- idade e quantidade de efeitos pendentes/failed;
+- leases expirados;
+- mensagens atrasadas;
+- simulações ambíguas;
+- crescimento de retry e DLQ;
+- falhas de dedupe nos destinos.
 
-Prometheus coleta métricas de:
+Alertas ainda precisam ser provisionados; o código expõe séries, mas não instala regras operacionais completas.
 
-- autenticação rejeitada;
-- status/duração HTTP;
-- retry/DLQ/poison;
-- Inbox e outcomes;
-- handoff de IA;
-- execução de tools;
-- busca/reindexação RAG;
-- memória;
-- auditoria e handoff.
+## 12. Lacunas críticas restantes
 
-Alertas ainda não estão configurados; apenas as séries foram expostas.
+1. **Core Bancário Mock:** repositório inacessível; não valida JWT, policy proof ou idempotência.
+2. **Identidade:** HS256 compartilhado, sem rotação/JWKS.
+3. **Handoff:** não integra plataforma humana real.
+4. **Infraestrutura:** Kafka/OpenSearch/rede locais sem controles de produção.
+5. **Supply chain:** sem CI obrigatório, SAST, SCA, SBOM e assinatura.
+6. **LGPD:** retenção, anonimização e exclusão ainda incompletas.
+7. **Evidência:** build, migração e E2E dos branches P0 ainda precisam ser executados.
 
-## 11. Lacunas críticas restantes
+## 13. Classificação
 
-1. **Core Bancário Mock**: recebe JWT e tenant, mas o repositório não estava acessível para implementar validação, health e métricas.
-2. **OpenSearch local**: plugin de segurança desabilitado; porta deve ficar restrita à máquina/rede de desenvolvimento.
-3. **Kafka local**: sem TLS/SASL/ACL e sem Schema Registry.
-4. **Rede**: sem NetworkPolicy, service mesh ou segmentação efetiva.
-5. **Identidade**: segredo HMAC compartilhado, sem rotação/JWKS.
-6. **Handoff**: não integra sistema humano real.
-7. **Supply chain**: sem CI obrigatório, SAST, SCA, assinatura de imagem ou SBOM.
-8. **Rate limiting/WAF**: ainda não implementados no workspace.
-9. **Criptografia em repouso**: depende da futura plataforma de execução.
-
-## 12. Critério para chamar de production-ready
-
-Não usar esse rótulo enquanto as lacunas 1–8 acima não tiverem owner, implementação, teste e evidência operacional. O P1 transforma a solução em **POC endurecida e arquiteturalmente coerente**, não em plataforma bancária pronta para produção.
+O estado implementado é uma **POC endurecida com consistência transacional e enforcement determinístico de tools**. Não deve ser classificado como production-ready bancário enquanto as lacunas acima não tiverem implementação, teste e evidência operacional.

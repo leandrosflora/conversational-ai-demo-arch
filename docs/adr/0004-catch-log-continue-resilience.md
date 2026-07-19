@@ -2,89 +2,93 @@
 
 ## Status
 
-**Aceito — revisado no P1.**
+**Aceito — revisado pelo ADR 0005.**
 
-Esta revisão substitui a regra ampla “catch-log-continue”. Falhas são tratadas conforme impacto em durabilidade, side effects, experiência do cliente e observabilidade.
+A regra ampla `catch-log-continue` não é permitida para efeitos obrigatórios. Cada dependência é classificada pelo impacto em durabilidade, negócio, experiência e observabilidade.
 
-## Contexto
-
-A plataforma combina:
-
-- entrada durável via Kafka;
-- chamadas síncronas a serviços internos;
-- decisões de IA e tools;
-- operações mutáveis de simulação/formalização;
-- persistência de sessão, auditoria e handoff;
-- eventos usados apenas para observabilidade.
-
-Aplicar o mesmo comportamento a todas as falhas produzia dois riscos opostos:
-
-1. **perda silenciosa**, quando uma falha crítica era engolida;
-2. **duplicidade**, quando um POST mutável era repetido automaticamente.
-
-## Decisão
-
-### Classe A — durabilidade da entrada
+## Classe A — durabilidade da entrada e estado
 
 Exemplos:
 
 - publicação de `channel.webhook.received`;
-- gravação do Inbox do Orchestrator;
-- publicação de retry ou DLQ antes do commit do offset.
+- aquisição do Inbox;
+- atualização versionada da conversa;
+- gravação da Outbox;
+- publicação de retry/DLQ antes do commit do offset.
 
 Regra:
 
-- falha **não pode** ser engolida;
-- o webhook responde `503` se a entrada não foi persistida;
-- o consumer não commita o offset se retry/DLQ não foi confirmado;
-- métricas e logs de erro são obrigatórios.
+- falha nunca é engolida;
+- o webhook retorna `503` quando a entrada não foi persistida;
+- o Orchestrator não retorna `202` sem transação de estado + Outbox;
+- o consumer não commita se retry/DLQ não foi confirmado.
 
-### Classe B — operações mutáveis de negócio
+## Classe B — efeitos obrigatórios duráveis
+
+Exemplos:
+
+- resposta ao cliente;
+- projeção de sessão/histórico;
+- auditoria;
+- solicitação de handoff;
+- eventos de intenção e estado.
+
+Regra:
+
+- o request registra o efeito na Outbox em vez de depender da disponibilidade síncrona do destino;
+- o dispatcher executa at-least-once;
+- falha mantém o efeito em `failed` com backoff;
+- destinos precisam deduplicar pela chave tenant-scoped;
+- efeito anterior não publicado bloqueia versões posteriores da mesma conversa.
+
+Não existe mais `catch-log-continue` que permita concluir uma mensagem sem registrar a obrigação.
+
+## Classe C — operações mutáveis de negócio
 
 Exemplos:
 
 - simular proposta;
-- confirmar acordo;
-- solicitar handoff;
-- registrar auditoria.
+- confirmar acordo.
 
 Regra:
 
-- retry automático de `POST`, `PUT`, `PATCH` e `DELETE` é desabilitado;
-- repetição só é permitida com `Idempotency-Key` validada pelo destino;
-- confirmação de acordo usa chave estável baseada na simulação;
-- Audit e Handoff aplicam unicidade no PostgreSQL.
+- retry HTTP automático é desabilitado;
+- `Idempotency-Key` é obrigatória;
+- Tool Service gera a chave após policy determinística;
+- Renegotiation Service valida `policy_id` assinado contra a chave;
+- simulação persiste request hash e resposta;
+- resultado ambíguo falha fechado e exige reconciliação enquanto o Core não validar idempotência.
 
-### Classe C — decisão conversacional crítica
+## Classe D — decisão conversacional crítica
 
 Exemplos:
 
 - Agent Runtime indisponível;
-- OpenAI indisponível;
+- modelo indisponível;
 - baixa confiança.
 
 Regra:
 
-- a falha é convertida em decisão explícita de handoff;
-- não é tratada como sucesso normal;
-- outcome e reason devem ser medidos.
+- converter para decisão explícita de handoff;
+- não tratar como sucesso automático;
+- medir outcome e reason com vocabulário fechado.
 
-### Classe D — dependências degradáveis
+## Classe E — contexto enriquecedor degradável
 
 Exemplos:
 
-- Memory Service temporariamente indisponível;
-- Knowledge Service indisponível;
-- publicação de eventos Kafka sem consumer de negócio.
+- leitura de histórico para enriquecer o prompt;
+- busca de conhecimento não transacional.
 
 Regra:
 
-- o adapter captura e registra a falha;
-- a jornada pode continuar com estado local vazio, mensagem de indisponibilidade ou ausência do evento;
-- toda degradação deve incrementar métrica de resultado/erro;
-- a decisão de continuar deve estar documentada por adapter, não implícita.
+- pode degradar para histórico vazio ou mensagem de indisponibilidade;
+- não pode autorizar operação financeira por ausência de contexto;
+- toda degradação precisa de métrica e log sem PII.
 
-### Classe E — poison messages
+A projeção de memória deixou de pertencer integralmente a esta classe: sua entrega é agora um efeito durável da Outbox, embora a leitura de histórico continue degradável.
+
+## Classe F — poison messages
 
 Exemplos:
 
@@ -95,55 +99,50 @@ Exemplos:
 Regra:
 
 - não executar retry infinito;
-- preservar payload original;
-- publicar em `channel.webhook.received.dlq` com motivo e origem;
-- commitar o offset somente após confirmação da DLQ;
-- reprocessamento da DLQ é administrativo e explícito.
-
-## Retry
-
-- GET/HEAD/OPTIONS podem ser repetidos com backoff limitado.
-- Métodos inseguros não são repetidos automaticamente.
-- Retry de mensagem Kafka é feito por tópico durável, não por loop infinito no mesmo offset.
-- Limite padrão da entrada: cinco tentativas.
+- preservar o payload original;
+- enviar à DLQ com motivo e origem;
+- commitar somente após confirmação da DLQ;
+- reprocessamento é administrativo.
 
 ## Timeouts
 
-Cada chamada deve ter timeout coerente com seu orçamento de latência. Timeout do chamador não deve marcar a operação mutável como falha definitiva quando o destino pode ter concluído; por isso operações mutáveis dependem de idempotência para reconciliação.
+- cada chamada deve possuir orçamento explícito;
+- timeout de operação mutável é resultado potencialmente ambíguo;
+- não liberar chave idempotente automaticamente depois que uma chamada externa começou;
+- reconciliação precede qualquer nova tentativa quando o destino não oferece idempotência comprovada.
 
 ## Observabilidade obrigatória
 
-Cada classe deve emitir:
+Cada classe deve expor:
 
 - contador de sucesso/erro;
-- reason ou exception type com cardinalidade controlada;
-- duração para operações relevantes;
+- reason ou exception type de cardinalidade controlada;
+- duração;
 - trace distribuído;
-- log estruturado com correlation/trace ID e tenant, sem PII.
-
-## Consequências positivas
-
-- falhas críticas deixam de ser mascaradas;
-- POSTs mutáveis deixam de ser duplicados por retry automático;
-- poison messages deixam de bloquear a partição indefinidamente;
-- degradação fica mensurável;
-- comportamento operacional é previsível por classe.
-
-## Consequências negativas
-
-- mais estados e tópicos precisam ser operados;
-- DLQ exige procedimento de triagem/reprocessamento;
-- serviços precisam carregar idempotency key, tenant e trace;
-- a disponibilidade percebida pode cair quando a plataforma escolhe falhar fechado em vez de aceitar perda de dados.
+- tenant/correlation em logs, sem conteúdo sensível;
+- idade e quantidade de efeitos pendentes quando aplicável.
 
 ## Regras de revisão
 
-Qualquer novo downstream deve declarar no PR:
+Qualquer novo downstream deve declarar:
 
 1. classe da dependência;
 2. timeout;
 3. política de retry;
 4. estratégia de idempotência;
-5. comportamento de fallback;
-6. métricas e alertas;
-7. tratamento de dados sensíveis.
+5. comportamento para resultado ambíguo;
+6. mecanismo de durabilidade;
+7. ordenação necessária;
+8. métricas e alertas;
+9. tratamento de dados sensíveis.
+
+## Relação com ADR 0005
+
+O ADR 0005 detalha:
+
+- transação Inbox + estado + Outbox;
+- lease e versão por conversa;
+- policy enforcement das tools;
+- tenant assinado;
+- idempotência da simulação;
+- reconciliação fail-closed.

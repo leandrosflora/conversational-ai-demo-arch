@@ -3,6 +3,10 @@ services:
     volumes:
       - ./database/conversational-ai-postgres-p0-idempotency.sql:/docker-entrypoint-initdb.d/002-p0-idempotency.sql:ro
 
+  mongodb:
+    volumes:
+      - ./database/conversational-ai-mongodb-p0-consistency.js:/docker-entrypoint-initdb.d/002-p0-consistency.js:ro
+
   kafka-init:
     command: >
       "
@@ -18,10 +22,16 @@ services:
       InternalAuth__SigningKey: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
       InternalAuth__TokenTtlSeconds: "300"
       Orchestrator__TenantId: ${DEFAULT_TENANT_ID:-00000000-0000-0000-0000-000000000001}
+      Redis__ConnectionString: redis:6379
+      Redis__PendingTtlSeconds: "120"
+      Redis__CompletedTtlSeconds: "604800"
       Kafka__RawWebhookRetryTopic: channel.webhook.received.retry
       Kafka__RawWebhookDeadLetterTopic: channel.webhook.received.dlq
       Kafka__MaxDeliveryAttempts: "5"
       Kafka__RetryBackoffSeconds: "2"
+    depends_on:
+      redis:
+        condition: service_healthy
 
   conversation-orchestrator:
     environment:
@@ -61,6 +71,11 @@ services:
       InternalAuth__ServiceName: renegotiation-service
       InternalAuth__SigningKey: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
       InternalAuth__TokenTtlSeconds: "300"
+      Postgres__ConnectionString: Host=postgres;Port=5432;Database=conversational_ai;Username=postgres;Password=postgres
+      Postgres__IdempotencyLeaseSeconds: "120"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   knowledge-service:
     environment:
