@@ -3,6 +3,10 @@ services:
     volumes:
       - ./database/conversational-ai-postgres-p0-idempotency.sql:/docker-entrypoint-initdb.d/002-p0-idempotency.sql:ro
 
+  mongodb:
+    volumes:
+      - ./database/conversational-ai-mongodb-p0-consistency.js:/docker-entrypoint-initdb.d/002-p0-consistency.js:ro
+
   kafka-init:
     command: >
       "
