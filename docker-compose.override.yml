@@ -61,6 +61,11 @@ services:
       InternalAuth__ServiceName: renegotiation-service
       InternalAuth__SigningKey: ${INTERNAL_AUTH_SIGNING_KEY:?Set INTERNAL_AUTH_SIGNING_KEY in .env}
       InternalAuth__TokenTtlSeconds: "300"
+      Postgres__ConnectionString: Host=postgres;Port=5432;Database=conversational_ai;Username=postgres;Password=postgres
+      Postgres__IdempotencyLeaseSeconds: "120"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   knowledge-service:
     environment:
