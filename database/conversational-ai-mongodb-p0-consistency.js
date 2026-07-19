@@ -19,7 +19,7 @@ messages.createIndex(
   {
     name: 'ux_conversation_messages_tenant_external_message',
     unique: true,
-    sparse: true
+    partialFilterExpression: { externalMessageId: { $type: 'string' } }
   }
 );
 
