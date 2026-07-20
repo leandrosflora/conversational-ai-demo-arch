@@ -93,7 +93,7 @@ Kafka, PostgreSQL, MongoDB, Redis e OpenSearch são efetivamente usados por cód
 
 ## Segurança
 
-Validação HMAC do webhook, exclusão de dados sensíveis dos eventos de auditoria, JWT interno HS256 (com claim `tenant_id` assinada e verificada) exigido em praticamente todo endpoint entre serviços, e tokens `governed_tool` com autorização por estágio de jornada entre `agent-runtime-renegotiation` → `tool-service-renegotiation` → `renegotiation-service`. Lacuna conhecida que permanece: sem criptografia em repouso. Detalhe em [`docs/security/security-architecture.md`](docs/security/security-architecture.md) — **atenção**: esse documento pode estar desatualizado sobre o que já foi implementado; ver `docs/validation/` para o estado confirmado por execução real mais recente.
+Validação HMAC do webhook, exclusão de dados sensíveis dos eventos de auditoria, JWT interno HS256 (com claim `tenant_id` assinada e verificada) exigido em praticamente todo endpoint entre serviços — com um segredo distinto por par (emissor, audiência), não mais um segredo único compartilhado por toda a plataforma (ver `per-service-internal-auth-secrets` em `openspec/changes/`) — e tokens `governed_tool` com autorização por estágio de jornada entre `agent-runtime-renegotiation` → `tool-service-renegotiation` → `renegotiation-service`. Lacunas conhecidas que permanecem: sem criptografia em repouso, e o HS256 por par ainda é simétrico sem rotação automatizada. Detalhe em [`docs/security/security-architecture.md`](docs/security/security-architecture.md) — **atenção**: esse documento pode estar desatualizado sobre o que já foi implementado; ver `docs/validation/` para o estado confirmado por execução real mais recente.
 
 ## ADRs
 

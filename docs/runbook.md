@@ -27,10 +27,19 @@ O repositório `core-bancario-mock` não estava acessível durante esta implemen
 
 ## 2. Configuração obrigatória
 
-Crie `.env` na raiz de `conversational-ai-demo-arch`:
+Crie `.env` na raiz de `conversational-ai-demo-arch`. Desde a mudança `per-service-internal-auth-secrets`, cada par (emissor, audiência) de chamada interna tem seu próprio segredo — não existe mais um `INTERNAL_AUTH_SIGNING_KEY` único. Gere os 10 valores (cada um com pelo menos 32 bytes, ex: `python -c "import secrets; print(secrets.token_urlsafe(48))"`); a lista completa e comentada está em `.env.example`:
 
 ```dotenv
-INTERNAL_AUTH_SIGNING_KEY=<segredo-aleatório-com-pelo-menos-32-bytes>
+INTERNAL_AUTH_SECRET_WHATSAPP_BFF__CONVERSATION_ORCHESTRATOR=<segredo>
+INTERNAL_AUTH_SECRET_CONVERSATION_ORCHESTRATOR__WHATSAPP_BFF=<segredo>
+INTERNAL_AUTH_SECRET_CONVERSATION_ORCHESTRATOR__AGENT_RUNTIME_RENEGOTIATION=<segredo>
+INTERNAL_AUTH_SECRET_CONVERSATION_ORCHESTRATOR__CONVERSATION_AUDIT_SERVICE=<segredo>
+INTERNAL_AUTH_SECRET_CONVERSATION_ORCHESTRATOR__CONVERSATION_HANDOFF_SERVICE=<segredo>
+INTERNAL_AUTH_SECRET_CONVERSATION_ORCHESTRATOR__CONVERSATION_MEMORY_SERVICE=<segredo>
+INTERNAL_AUTH_SECRET_AGENT_RUNTIME_RENEGOTIATION__TOOL_SERVICE_RENEGOTIATION=<segredo>
+INTERNAL_AUTH_SECRET_AGENT_RUNTIME_RENEGOTIATION__KNOWLEDGE_SERVICE=<segredo>
+INTERNAL_AUTH_SECRET_AGENT_RUNTIME_RENEGOTIATION__CONVERSATION_MEMORY_SERVICE=<segredo>
+INTERNAL_AUTH_SECRET_TOOL_SERVICE_RENEGOTIATION__RENEGOTIATION_SERVICE=<segredo>
 DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000001
 OPENAI_API_KEY=
 MOCK_AGENT_ENABLED=true
@@ -394,6 +403,6 @@ Mantenha o `for topic in ...; do` e o comando `kafka-topics.sh` em linhas YAML q
 
 Use `producer.list_topics(timeout=1)`. O argumento posicional `1` seria interpretado como tópico.
 
-### Compose falha com `Set INTERNAL_AUTH_SIGNING_KEY in .env`
+### Compose falha com `Set INTERNAL_AUTH_SECRET_<PAR> in .env`
 
-Defina a variável no `.env`; não versionar segredo real.
+Falta uma das 10 variáveis de segredo por par em `.env` — veja a lista completa em `.env.example`. Cada uma é independente; não versionar valores reais.

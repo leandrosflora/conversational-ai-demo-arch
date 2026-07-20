@@ -20,7 +20,16 @@ jobs:
       - name: Write placeholder .env
         run: |
           cat > .env <<'EOF'
-          INTERNAL_AUTH_SIGNING_KEY=placeholder-signing-key-for-ci-only-not-a-real-secret
+          INTERNAL_AUTH_SECRET_WHATSAPP_BFF__CONVERSATION_ORCHESTRATOR=placeholder-secret-for-ci-only-not-a-real-secret
+          INTERNAL_AUTH_SECRET_CONVERSATION_ORCHESTRATOR__WHATSAPP_BFF=placeholder-secret-for-ci-only-not-a-real-secret
+          INTERNAL_AUTH_SECRET_CONVERSATION_ORCHESTRATOR__AGENT_RUNTIME_RENEGOTIATION=placeholder-secret-for-ci-only-not-a-real-secret
+          INTERNAL_AUTH_SECRET_CONVERSATION_ORCHESTRATOR__CONVERSATION_AUDIT_SERVICE=placeholder-secret-for-ci-only-not-a-real-secret
+          INTERNAL_AUTH_SECRET_CONVERSATION_ORCHESTRATOR__CONVERSATION_HANDOFF_SERVICE=placeholder-secret-for-ci-only-not-a-real-secret
+          INTERNAL_AUTH_SECRET_CONVERSATION_ORCHESTRATOR__CONVERSATION_MEMORY_SERVICE=placeholder-secret-for-ci-only-not-a-real-secret
+          INTERNAL_AUTH_SECRET_AGENT_RUNTIME_RENEGOTIATION__TOOL_SERVICE_RENEGOTIATION=placeholder-secret-for-ci-only-not-a-real-secret
+          INTERNAL_AUTH_SECRET_AGENT_RUNTIME_RENEGOTIATION__KNOWLEDGE_SERVICE=placeholder-secret-for-ci-only-not-a-real-secret
+          INTERNAL_AUTH_SECRET_AGENT_RUNTIME_RENEGOTIATION__CONVERSATION_MEMORY_SERVICE=placeholder-secret-for-ci-only-not-a-real-secret
+          INTERNAL_AUTH_SECRET_TOOL_SERVICE_RENEGOTIATION__RENEGOTIATION_SERVICE=placeholder-secret-for-ci-only-not-a-real-secret
           DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000001
           OPENAI_API_KEY=sk-placeholder-not-a-real-key
           MOCK_AGENT_ENABLED=true

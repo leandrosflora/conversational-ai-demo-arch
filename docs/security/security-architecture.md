@@ -76,7 +76,9 @@ Assim, prompt ou tool call do LLM não são suficientes para autorizar uma opera
 
 ### Limitação de identidade
 
-O HS256 compartilhado permite que um serviço comprometido assine tokens para outras audiências. Produção deve migrar para:
+Desde a mudança `per-service-internal-auth-secrets`, não existe mais um segredo HS256 único compartilhado por toda a plataforma: cada par (emissor, audiência) — ex. `whatsapp-bff → conversation-orchestrator`, `agent-runtime-renegotiation → tool-service-renegotiation` — tem seu próprio segredo. O token de saída carrega um header `kid` igual ao nome do serviço emissor; quem valida resolve a chave a partir de uma allow-list própria de chamadores esperados (`InboundSecrets`/`internal_auth_inbound_secrets`) e rejeita qualquer `kid` fora dela antes mesmo de tentar verificar a assinatura — a identidade do chamador só é considerada provada depois que a assinatura verifica com a chave daquele par específico, nunca pelo `kid`/`sub` isoladamente. Isso reduz o raio de dano de um serviço comprometido: ele só consegue forjar tokens para os pares dos quais já fazia parte, não para toda a malha.
+
+Isso ainda é HS256 simétrico, sem rotação automatizada — comprometer um dos dois lados de um par ainda expõe aquele segredo específico. Produção deve migrar para:
 
 - workload identity/OAuth2;
 - JWT assimétrico com JWKS e rotação;
