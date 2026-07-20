@@ -1,5 +1,10 @@
 # conversational-ai-demo-arch
 
+[![Documentation](https://img.shields.io/badge/docs-MkDocs-526CFE?logo=materialformkdocs&logoColor=white)](https://leandrosflora.github.io/conversational-ai-demo-arch/)
+[![Publish MkDocs](https://github.com/leandrosflora/conversational-ai-demo-arch/actions/workflows/docs.yml/badge.svg)](https://github.com/leandrosflora/conversational-ai-demo-arch/actions/workflows/docs.yml)
+
+**Documentação publicada:** https://leandrosflora.github.io/conversational-ai-demo-arch/
+
 Arquitetura de referência para plataformas de IA conversacional utilizando agentes, MCP, RAG, WhatsApp, APIs corporativas e observabilidade ponta a ponta.
 
 ## Documentação
@@ -42,11 +47,11 @@ docker compose down -v
 | MongoDB | `localhost:27018` | `admin/admin` |
 | PostgreSQL | `localhost:5432` | `postgres/postgres` |
 | Kafka | `localhost:29092` | - |
-| OpenSearch | http://localhost:9200 | - |
-| Jaeger UI | http://localhost:16686 | - |
-| Loki | http://localhost:3100 | - |
-| Prometheus | http://localhost:9090 | - |
-| Grafana | http://localhost:3001 | `admin/admin` |
+| OpenSearch | `localhost:9200` | - |
+| Jaeger UI | `localhost:16686` | - |
+| Loki | `localhost:3100` | - |
+| Prometheus | `localhost:9090` | - |
+| Grafana | `localhost:3001` | `admin/admin` |
 
 ### Observabilidade
 
