@@ -1,0 +1,99 @@
+site_name: Conversational AI — Arquitetura
+site_description: Arquitetura de referência para IA conversacional com agentes, MCP, RAG, WhatsApp e observabilidade.
+site_author: Leandro Flora
+site_url: https://leandrosflora.github.io/conversational-ai-demo-arch/
+repo_name: leandrosflora/conversational-ai-demo-arch
+repo_url: https://github.com/leandrosflora/conversational-ai-demo-arch
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  language: pt-BR
+  icon:
+    logo: material/message-processing-outline
+    repo: fontawesome/brands/github
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-night
+        name: Usar tema escuro
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: indigo
+      accent: cyan
+      toggle:
+        icon: material/weather-sunny
+        name: Usar tema claro
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+
+plugins:
+  - search:
+      lang: pt
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+
+nav:
+  - Início: index.md
+  - Visão geral:
+      - Contexto de negócio: context/business-context.md
+      - Arquitetura C4: architecture/c4-context.md
+      - Diagrama de contexto: architecture/C4/c4-context.svg
+      - Containers atuais: architecture/C4/c4-container-current.puml
+      - Containers alvo: architecture/C4/c4-container-target.puml
+      - Jornadas e sequências: architecture/sequence-diagrams.md
+  - Serviços:
+      - Mapa completo: contracts/services-map.md
+      - WhatsApp BFF: services/whatsapp-bff.md
+      - Conversation Orchestrator: services/conversation-orchestrator.md
+      - Agent Runtime: services/agent-runtime-renegotiation.md
+      - Tool Service MCP: services/tool-service-renegotiation.md
+      - Renegotiation Service: services/renegotiation-service.md
+      - Core Bancário Mock: services/core-bancario-mock.md
+      - Knowledge Service: services/knowledge-service.md
+      - Conversation Memory: services/conversation-memory-service.md
+      - Conversation Audit: services/conversation-audit-service.md
+      - Conversation Handoff: services/conversation-handoff-service.md
+  - Contratos:
+      - Eventos Kafka: contracts/kafka-events.md
+      - Dados e ownership: contracts/data-stores.md
+      - Segurança: security/security-architecture.md
+  - Decisões:
+      - Kafka como fila durável: adr/0001-kafka-durable-webhook-queue.md
+      - Arquitetura hexagonal: adr/0002-hexagonal-ports-and-adapters.md
+      - MCP governado: adr/0003-mcp-governed-tool-calling.md
+      - Resiliência: adr/0004-catch-log-continue-resilience.md
+      - Outbox, tools e ordering: adr/0005-transactional-outbox-governed-tools-and-ordering.md
+  - Evidências:
+      - Jornada E2E: validation/2026-07-13-e2e-journey.md
+      - Hardening P1: validation/2026-07-18-p1-hardening-e2e.md
+      - Consistência P0: validation/2026-07-19-p0-consistency-e2e.md
+      - Segredos por serviço: validation/2026-07-20-per-service-internal-auth-secrets-e2e.md
+  - Operação:
+      - Runbook local: runbook.md
+
+copyright: Copyright &copy; 2026 Leandro Flora — Apache-2.0

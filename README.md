@@ -1,5 +1,10 @@
 # conversational-ai-demo-arch
 
+[![Documentation](https://img.shields.io/badge/docs-MkDocs-526CFE?logo=materialformkdocs&logoColor=white)](https://leandrosflora.github.io/conversational-ai-demo-arch/)
+[![Publish MkDocs](https://github.com/leandrosflora/conversational-ai-demo-arch/actions/workflows/docs.yml/badge.svg)](https://github.com/leandrosflora/conversational-ai-demo-arch/actions/workflows/docs.yml)
+
+**Documentação publicada:** https://leandrosflora.github.io/conversational-ai-demo-arch/
+
 Arquitetura de referência para plataformas de IA conversacional utilizando agentes, MCP, RAG, WhatsApp, APIs corporativas e observabilidade ponta a ponta.
 
 ## Documentação
