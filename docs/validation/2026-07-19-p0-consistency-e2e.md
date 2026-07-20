@@ -52,7 +52,19 @@ Os três achados de teste apontam para o mesmo padrão: a PR de consistência P0
 
 ## Atualização — suítes de teste corrigidas em 19/07
 
-Os 34 testes quebrados listados acima foram corrigidos (sem alterar comportamento de produção): `conversation-orchestrator.Tests` 73/73, `renegotiation-service.Tests` 35/35, `tool-service-renegotiation` pytest 39/39. Em todos os casos a correção foi atualizar o fixture/harness de teste para o novo contrato (dispatch assíncrono via outbox, token `governed_tool` assinado, `ToolExecutionContext`/tenant contextvar) em vez de mudar o código de produção — os achados 1 e 2 (regressões de comportamento) **continuam não corrigidos** e precisam de decisão de produto/arquitetura antes de mexer no código de produção.
+Os 34 testes quebrados listados acima foram corrigidos (sem alterar comportamento de produção): `conversation-orchestrator.Tests` 73/73, `renegotiation-service.Tests` 35/35, `tool-service-renegotiation` pytest 39/39. Em todos os casos a correção foi atualizar o fixture/harness de teste para o novo contrato (dispatch assíncrono via outbox, token `governed_tool` assinado, `ToolExecutionContext`/tenant contextvar) em vez de mudar o código de produção.
+
+## Atualização — achados 1 e 2 corrigidos em 19/07
+
+- **Achado 1 (política bloqueia `consultar_contratos` no mesmo turno)**: `tool-service-renegotiation/app/policy.py` — `IdentificationPending` foi adicionado ao conjunto de estágios permitidos para `consultar_contratos`. Como essa ferramenta exige um `client_id` que só existe depois de um `consultar_cliente` bem-sucedido dentro do mesmo turno assinado, isso não afrouxa a exigência de identificação (continua bloqueado a partir de `Started`) — só permite que as duas chamadas aconteçam no mesmo turno, que é o padrão natural de uso. Testes de regressão adicionados em `test_policy.py`.
+- **Achado 2 (retry infinito do `channel.reply`)**: `conversation-orchestrator` — `ChannelReplyClient` agora inspeciona o corpo da resposta e lança `NonRetryableDispatchException` quando `whatsapp-bff` sinaliza `retryable: false`; `OutboxDispatcherService` passa a "estacionar" esses efeitos (delay de ~10 anos, sem novo valor de status no Postgres, já que a coluna tem CHECK constraint que exigiria migração) em vez de retentar com backoff exponencial indefinidamente. Como rede de segurança, qualquer efeito que falhe 20 vezes sem nunca receber esse sinal explícito também é estacionado. Métrica `orchestrator_outbox_dispatch_total{outcome="dead_letter"}` permite alertar sobre isso; efeitos estacionados continuam com `status='failed'` no Postgres (consultáveis por `next_attempt_at` muito no futuro) para reconciliação manual por um operador. Testes de regressão adicionados em `ChannelReplyClientTests.cs` e novo `OutboxDispatcherServiceTests.cs`.
+
+Suítes após as correções: `conversation-orchestrator.Tests` 78/78, `renegotiation-service.Tests` 35/35 (inalterado), `tool-service-renegotiation` pytest 41/41.
+
+Ambas as correções foram re-exercitadas contra o ambiente Docker real (`docker compose up -d --build` só nos serviços afetados, novo par de turnos via webhook assinado, número sintético novo `17865559876`):
+
+- **Achado 1**: `consultar_cliente` e `consultar_contratos` retornaram `outcome=success` no mesmo turno; `renegotiation-service` confirmou a chamada `GET /clients/12345678900/contracts` chegando de fato.
+- **Achado 2**: a primeira tentativa de `channel.reply` foi tratada como transitória (`retry in 2s`); a segunda recebeu o `409` com `retryable:false` do `whatsapp-bff` e foi logada como `Parked outbox effect channel.reply ... as non-retryable; requires manual reconciliation` — sem nenhuma nova tentativa nos 40s seguintes (antes disso, a mesma situação gerava retries a cada 2s/4s/8s/16s/32s/64s… indefinidamente).
 
 ## Recomendação
 

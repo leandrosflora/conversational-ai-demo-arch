@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  compose-config:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Placeholder values only - satisfies the ${VAR:?...} required-var guards in
+      # docker-compose.override.yml so `docker compose config` can render the merged
+      # file. This never runs `docker compose up`, so no real secrets are needed; it
+      # only parses and interpolates the YAML, which is what would have caught the
+      # kafka-init block-scalar folding bug found by hand during the 2026-07-18 validation.
+      - name: Write placeholder .env
+        run: |
+          cat > .env <<'EOF'
+          INTERNAL_AUTH_SIGNING_KEY=placeholder-signing-key-for-ci-only-not-a-real-secret
+          DEFAULT_TENANT_ID=00000000-0000-0000-0000-000000000001
+          OPENAI_API_KEY=sk-placeholder-not-a-real-key
+          MOCK_AGENT_ENABLED=true
+          WHATSAPP_APP_SECRET=placeholder
+          WHATSAPP_VERIFY_TOKEN=placeholder
+          EOF
+
+      - name: Validate docker compose configuration
+        run: docker compose -f docker-compose.yml -f docker-compose.override.yml config --quiet
