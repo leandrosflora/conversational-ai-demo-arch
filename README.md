@@ -75,13 +75,15 @@ O Prometheus coleta métricas dele mesmo, do Jaeger e de uma aplicação exposta
 
 Detalhe de responsabilidades, APIs e regras de negócio de cada um em [`docs/services/`](docs/services/).
 
+Os 10 repos (esses 9 + este) têm CI (`.github/workflows/ci.yml`) rodando build/teste (ou, neste repo, `docker compose config`) a cada push/PR para o branch padrão.
+
 ## Kafka em prática
 
 7 tópicos existem hoje no código; a maioria é publicada como trilha de auditoria, sem consumidor real (a integração entre serviços é majoritariamente HTTP síncrono). O único tópico com produtor e consumidor implementados é `channel.webhook.received`, usado como fila durável de entrada do `whatsapp-bff`. Matriz completa em [`docs/contracts/kafka-events.md`](docs/contracts/kafka-events.md).
 
 ## Dados e bancos
 
-Kafka, PostgreSQL, MongoDB, Redis e OpenSearch são efetivamente usados por código de aplicação hoje: PostgreSQL pelo `conversation-audit-service` (`ops.audit_events`, um evento de jornada por linha) e pelo `conversation-handoff-service` (`conversation.handoffs`, um pedido de transferência humana por linha), MongoDB e Redis pelo `conversation-memory-service` (sessão de conversa e histórico/memória de longo prazo), OpenSearch pelo `knowledge-service` (busca vetorial k-NN de FAQ). Detalhe em [`docs/contracts/data-stores.md`](docs/contracts/data-stores.md).
+Kafka, PostgreSQL, MongoDB, Redis e OpenSearch são efetivamente usados por código de aplicação hoje: PostgreSQL pelo `conversation-audit-service` (`ops.audit_events`, um evento de jornada por linha), pelo `conversation-handoff-service` (`conversation.handoffs`, um pedido de transferência humana por linha), pelo `conversation-orchestrator` (Inbox + Outbox transacional da ingestão de mensagens) e pelo `renegotiation-service` (lease de idempotência de `simular_proposta`); MongoDB pelo `conversation-memory-service` (histórico de mensagens e memória de longo prazo); Redis pelo `conversation-memory-service` (sessão ativa de conversa) e pelo `whatsapp-bff` (idempotência de envio outbound); OpenSearch pelo `knowledge-service` (busca vetorial k-NN de FAQ, um índice por tenant). Detalhe em [`docs/contracts/data-stores.md`](docs/contracts/data-stores.md) — pode estar desatualizado sobre os usos mais recentes.
 
 ## Contratos
 
@@ -91,7 +93,7 @@ Kafka, PostgreSQL, MongoDB, Redis e OpenSearch são efetivamente usados por cód
 
 ## Segurança
 
-Validação HMAC do webhook, exclusão de dados sensíveis dos eventos de auditoria, e as lacunas conhecidas (sem autenticação entre serviços internos, sem criptografia em repouso) em [`docs/security/security-architecture.md`](docs/security/security-architecture.md).
+Validação HMAC do webhook, exclusão de dados sensíveis dos eventos de auditoria, JWT interno HS256 (com claim `tenant_id` assinada e verificada) exigido em praticamente todo endpoint entre serviços, e tokens `governed_tool` com autorização por estágio de jornada entre `agent-runtime-renegotiation` → `tool-service-renegotiation` → `renegotiation-service`. Lacuna conhecida que permanece: sem criptografia em repouso. Detalhe em [`docs/security/security-architecture.md`](docs/security/security-architecture.md) — **atenção**: esse documento pode estar desatualizado sobre o que já foi implementado; ver `docs/validation/` para o estado confirmado por execução real mais recente.
 
 ## ADRs
 
