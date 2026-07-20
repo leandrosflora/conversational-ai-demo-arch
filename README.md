@@ -42,11 +42,11 @@ docker compose down -v
 | MongoDB | `localhost:27018` | `admin/admin` |
 | PostgreSQL | `localhost:5432` | `postgres/postgres` |
 | Kafka | `localhost:29092` | - |
-| OpenSearch | http://localhost:9200 | - |
-| Jaeger UI | http://localhost:16686 | - |
-| Loki | http://localhost:3100 | - |
-| Prometheus | http://localhost:9090 | - |
-| Grafana | http://localhost:3001 | `admin/admin` |
+| OpenSearch | 'localhost:9200' | - |
+| Jaeger UI | 'localhost:16686' | - |
+| Loki | 'localhost:3100' | - |
+| Prometheus | 'localhost:9090' | - |
+| Grafana | 'localhost:3001' | `admin/admin` |
 
 ### Observabilidade
 
