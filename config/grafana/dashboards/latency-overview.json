@@ -1,0 +1,249 @@
+{
+  "id": null,
+  "uid": "latency-overview",
+  "title": "Latência de Requisições - Conversational AI",
+  "tags": ["conversational-ai", "latency"],
+  "timezone": "browser",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": { "from": "now-1h", "to": "now" },
+  "panels": [
+    {
+      "id": 100,
+      "type": "row",
+      "title": "Média de tempo de requisição por serviço",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "Latência média por serviço (ms)",
+      "description": "Média = taxa da soma das durações / taxa da contagem de requisições, por instância de serviço. Cobre os 9 serviços de aplicação (platform_http_request_duration_seconds).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 1 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "spanNulls": true }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max", "last"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1000 * sum by (instance) (rate(platform_http_request_duration_seconds_sum{job=~\"dotnet-services|python-services\"}[$__rate_interval])) / sum by (instance) (rate(platform_http_request_duration_seconds_count{job=~\"dotnet-services|python-services\"}[$__rate_interval]))",
+          "legendFormat": "{{instance}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "table",
+      "title": "Latência média por serviço + endpoint (ms) - janela selecionada",
+      "description": "Detalhe por método/path dentro de cada serviço. Ordene pela coluna Value para achar o endpoint mais lento.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 10 },
+      "fieldConfig": {
+        "defaults": { "unit": "ms", "custom": { "align": "auto" } },
+        "overrides": []
+      },
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "displayName": "Value", "desc": true }]
+      },
+      "transformations": [
+        { "id": "merge", "options": {} },
+        { "id": "organize", "options": { "excludeByName": { "Time": true } } }
+      ],
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "instant": true,
+          "format": "table",
+          "expr": "1000 * sum by (instance, method, path) (increase(platform_http_request_duration_seconds_sum{job=~\"dotnet-services|python-services\"}[$__range])) / (sum by (instance, method, path) (increase(platform_http_request_duration_seconds_count{job=~\"dotnet-services|python-services\"}[$__range])) > 0)"
+        }
+      ]
+    },
+    {
+      "id": 101,
+      "type": "row",
+      "title": "E2E aproximado: webhook recebido no BFF → resposta enviada à Meta",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 20 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 3,
+      "type": "text",
+      "title": "",
+      "gridPos": { "h": 3, "w": 24, "x": 0, "y": 21 },
+      "options": {
+        "mode": "markdown",
+        "content": "**Aproximação, não um relógio único de ponta a ponta.** O envio da resposta ao cliente acontece de forma assíncrona via outbox do orchestrator, sem instrumentação própria de E2E. **A etapa 2 (Orchestrator) já inclui a etapa 3 (Agent Runtime) dentro de si** — `IngestMessageUseCase` mede o tempo total do turno, incluindo a chamada ao Agent Runtime, então a etapa 3 é mostrada só para referência/diagnóstico e **não entra na soma do Total**. Total = etapa 1 + etapa 2 (que já contém a 3) + etapa 4. Não incluído no total: tempo de fila no Kafka, espera no outbox antes do dispatch."
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "1. Webhook recebido (BFF)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "ms", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1000 * sum(rate(platform_http_request_duration_seconds_sum{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/webhooks/whatsapp\"}[$__rate_interval])) / sum(rate(platform_http_request_duration_seconds_count{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/webhooks/whatsapp\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "2. Processamento (Orchestrator, já inclui a etapa 3)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "ms", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1000 * sum(rate(orchestrator_message_processing_duration_seconds_sum[$__rate_interval])) / sum(rate(orchestrator_message_processing_duration_seconds_count[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "3. Chamada ao Agent Runtime (subconjunto da etapa 2, não somado no Total)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "ms", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1000 * sum(rate(orchestrator_agent_runtime_call_duration_seconds_sum[$__rate_interval])) / sum(rate(orchestrator_agent_runtime_call_duration_seconds_count[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "4. Envio à Meta (BFF)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 24 },
+      "fieldConfig": { "defaults": { "unit": "ms", "decimals": 1 }, "overrides": [] },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1000 * sum(rate(platform_http_request_duration_seconds_sum{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/internal/messages\"}[$__rate_interval])) / sum(rate(platform_http_request_duration_seconds_count{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/internal/messages\"}[$__rate_interval]))"
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Total aproximado (etapas 1 + 2 + 4, sem dupla contagem)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 24 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 3000 },
+              { "color": "red", "value": 8000 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "graphMode": "area" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1000 * ( (sum(rate(platform_http_request_duration_seconds_sum{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/webhooks/whatsapp\"}[$__rate_interval])) / sum(rate(platform_http_request_duration_seconds_count{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/webhooks/whatsapp\"}[$__rate_interval]))) + (sum(rate(orchestrator_message_processing_duration_seconds_sum[$__rate_interval])) / sum(rate(orchestrator_message_processing_duration_seconds_count[$__rate_interval]))) + (sum(rate(platform_http_request_duration_seconds_sum{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/internal/messages\"}[$__rate_interval])) / sum(rate(platform_http_request_duration_seconds_count{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/internal/messages\"}[$__rate_interval]))) )"
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Breakdown ao longo do tempo (ms) - etapas 1+2+4 empilhadas, etapa 3 sobreposta como referência",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 29 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ms",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 30,
+            "stacking": { "mode": "normal", "group": "A" },
+            "spanNulls": true
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "3. Chamada ao Agent Runtime (referência, dentro da etapa 2)" },
+            "properties": [
+              { "id": "custom.stacking", "value": { "mode": "none", "group": "A" } },
+              { "id": "custom.lineStyle", "value": { "dash": [10, 10], "fill": "dash" } },
+              { "id": "custom.fillOpacity", "value": 0 },
+              { "id": "custom.lineWidth", "value": 2 }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1000 * sum(rate(platform_http_request_duration_seconds_sum{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/webhooks/whatsapp\"}[$__rate_interval])) / sum(rate(platform_http_request_duration_seconds_count{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/webhooks/whatsapp\"}[$__rate_interval]))",
+          "legendFormat": "1. Webhook recebido (BFF)"
+        },
+        {
+          "refId": "B",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1000 * sum(rate(orchestrator_message_processing_duration_seconds_sum[$__rate_interval])) / sum(rate(orchestrator_message_processing_duration_seconds_count[$__rate_interval]))",
+          "legendFormat": "2. Processamento (Orchestrator, inclui etapa 3)"
+        },
+        {
+          "refId": "C",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1000 * sum(rate(orchestrator_agent_runtime_call_duration_seconds_sum[$__rate_interval])) / sum(rate(orchestrator_agent_runtime_call_duration_seconds_count[$__rate_interval]))",
+          "legendFormat": "3. Chamada ao Agent Runtime (referência, dentro da etapa 2)"
+        },
+        {
+          "refId": "D",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "expr": "1000 * sum(rate(platform_http_request_duration_seconds_sum{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/internal/messages\"}[$__rate_interval])) / sum(rate(platform_http_request_duration_seconds_count{instance=\"whatsapp-bff:8080\",method=\"POST\",path=\"/internal/messages\"}[$__rate_interval]))",
+          "legendFormat": "4. Envio à Meta (BFF)"
+        }
+      ]
+    }
+  ]
+}
