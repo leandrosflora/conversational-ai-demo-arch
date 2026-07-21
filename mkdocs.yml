@@ -1,10 +1,10 @@
-site_name: Conversational AI — Arquitetura
+site_name: Conversational AI Platform Architecture
 site_description: Arquitetura de referência para IA conversacional com agentes, MCP, RAG, WhatsApp e observabilidade.
 site_author: Leandro Flora
-site_url: https://leandrosflora.github.io/conversational-ai-demo-arch/
+site_url: https://leandrosflora.github.io/conversational-ai-platform-architecture/
 use_directory_urls: false
-repo_name: leandrosflora/conversational-ai-demo-arch
-repo_url: https://github.com/leandrosflora/conversational-ai-demo-arch
+repo_name: leandrosflora/conversational-ai-platform-architecture
+repo_url: https://github.com/leandrosflora/conversational-ai-platform-architecture
 edit_uri: edit/main/docs/
 
 theme:
