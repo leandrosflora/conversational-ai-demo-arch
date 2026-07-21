@@ -1,9 +1,9 @@
-# Conversational AI Demo
+# Conversational AI Platform Architecture
 
 Arquitetura de referência para plataformas corporativas de IA conversacional com agentes, MCP, RAG, WhatsApp, sistemas transacionais e observabilidade ponta a ponta.
 
 [:material-sitemap-outline: Explorar a arquitetura](architecture/c4-context.md){ .md-button .md-button--primary }
-[:material-github: Ver o repositório](https://github.com/leandrosflora/conversational-ai-demo-arch){ .md-button }
+[:material-github: Ver o repositório](https://github.com/leandrosflora/conversational-ai-platform-architecture){ .md-button }
 
 ## Visão arquitetural
 
