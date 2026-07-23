@@ -23,7 +23,7 @@ workspace/
 
 Os contratos de tenant e policy mudaram em toda a cadeia. Não implante somente um serviço P0. O conjunto precisa ser validado e liberado de forma coordenada.
 
-O repositório `core-bancario-mock` não estava acessível durante esta implementação. O Renegotiation Service envia JWT, tenant e `Idempotency-Key`, mas o mock ainda não valida integralmente essas garantias.
+O Renegotiation Service envia JWT, tenant e `Idempotency-Key`, mas o `core-bancario-mock` ainda não valida integralmente essas garantias.
 
 ## 2. Configuração obrigatória
 
