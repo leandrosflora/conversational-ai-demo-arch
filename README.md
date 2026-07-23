@@ -72,7 +72,7 @@ O Prometheus coleta métricas dele mesmo, do Jaeger e de uma aplicação exposta
 | Agent Runtime | [agent-runtime-renegotiation](https://github.com/leandrosflora/agent-runtime-renegotiation) |
 | Tool Service (MCP) | [tool-service-renegotiation](https://github.com/leandrosflora/tool-service-renegotiation) |
 | Renegotiation Service | [renegotiation-service](https://github.com/leandrosflora/renegotiation-service) |
-| Core Bancário (mock) | sem repositório próprio — pasta local `core-bancario-mock/` |
+| Core Bancário (mock) | [core-bancario-mock](https://github.com/leandrosflora/core-bancario-mock) |
 | Knowledge Service | [knowledge-service](https://github.com/leandrosflora/knowledge-service) |
 | Conversation Memory Service | [conversation-memory-service](https://github.com/leandrosflora/conversation-memory-service) |
 | Conversation Audit Service | [conversation-audit-service](https://github.com/leandrosflora/conversation-audit-service) |
@@ -80,7 +80,7 @@ O Prometheus coleta métricas dele mesmo, do Jaeger e de uma aplicação exposta
 
 Detalhe de responsabilidades, APIs e regras de negócio de cada um em [`docs/services/`](docs/services/).
 
-Os 10 repos (esses 9 + este) têm CI (`.github/workflows/ci.yml`) rodando build/teste (ou, neste repo, `docker compose config`) a cada push/PR para o branch padrão.
+Os 10 repos (os desta tabela exceto Core Bancário + este) têm CI (`.github/workflows/ci.yml`) rodando build/teste (ou, neste repo, `docker compose config`) a cada push/PR para o branch padrão. Core Bancário agora tem repositório próprio, mas ainda não tem workflow de CI configurado.
 
 ## Kafka em prática
 
