@@ -36,13 +36,25 @@ proposta original da change; todos confirmados ao vivo antes e depois da correç
 2. **Nenhuma instrução no system prompt para chamar `gerar_documento`** — após `confirmar_acordo`
    ter sucesso, o agente ficava re-tentando `confirmar_acordo` (negado) em vez de gerar o documento
    quando o cliente pedia. Corrigido com uma regra explícita no prompt.
-3. (Observado, não corrigido — pré-existente, fora do escopo desta change) `consultar_contratos` foi
-   chamado pelo modelo com um `client_id` truncado (ex: `"1111"`/`"2222"` em vez do CPF completo)
-   em 2 das 3 tentativas de fluxo completo, e `renegotiation-service`/`core-bancario-mock` aceitou
-   silenciosamente o identificador incorreto, retornando dados de um cliente diferente em vez de
-   erro. Não bloqueou a jornada (o `active_contract_id` resultante, embora com aparência estranha,
-   permaneceu consistente internamente pelo resto da conversa), mas é uma divergência de qualidade
-   de dados que merece follow-up — ver seção de achados.
+3. `consultar_contratos` foi chamado pelo modelo com um `client_id` truncado (ex: `"1111"`/`"2222"`
+   em vez do CPF completo) em 2 das 3 tentativas de fluxo completo, e
+   `renegotiation-service`/`core-bancario-mock` aceitava silenciosamente o identificador incorreto,
+   retornando dados de um cliente diferente em vez de erro. Inicialmente registrado aqui como
+   "não corrigido, fora de escopo" — **revisto e corrigido** depois que um teste real de cliente via
+   WhatsApp (seção abaixo) mostrou que esse mesmo bug causa dados financeiros incorretos, não é só
+   cosmético. Ver seção "Teste real de cliente via WhatsApp".
+
+**Duas rodadas adicionais de correção**, motivadas por um teste real de cliente via WhatsApp
+conduzido pelo usuário logo após a rodada acima (mesmo dia) — ver seção dedicada abaixo:
+
+4. **Resolução de `ContractSelectionPending → ContractSelected` não disparava com resposta curta do
+   cliente** (ex: `"2"`) — o agente tentava consultar débitos/elegibilidade diretamente em vez de
+   re-confirmar o contrato via `consultar_contratos`, ficando preso indefinidamente. Corrigido com
+   regra explícita no prompt.
+5. **`core-bancario-mock` fabricava dados plausíveis para identificadores malformados** (ex: CPF
+   truncado "2222") em vez de retornar erro — permitindo que uma renegociação prosseguisse com saldo/
+   dívida fabricados em vez dos reais do cliente. Corrigido validando o formato do CPF (11 dígitos)
+   antes de gerar dados genéricos ou consultar o cenário reservado.
 
 ## Ambiente e método
 
@@ -140,6 +152,52 @@ comportamento correto de `ContractSelectionPending`, sem chamar `consultar_debit
 `validar_elegibilidade`/`simular_proposta` prematuramente. Restante da jornada idêntica em forma ao
 fluxo de contrato único. Confirmação final: *"Seu acordo foi confirmado com sucesso!"* com link de
 documento.
+
+## Teste real de cliente via WhatsApp (achados #4 e #5)
+
+Após a rodada acima ser reportada como completa, o usuário conduziu um teste real via WhatsApp
+(conversa `5511942302556`, CPF `22222222222`) e ainda ficou preso: o agente repetiu "não consigo
+acessar... devido ao estágio atual da jornada" por vários turnos seguidos ao selecionar o contrato
+de **Cartão de Crédito** com uma resposta curta ("2"). Investigação da transcrição real (via
+`conversation_messages` do `conversation-memory-service`) e dos logs de `tool-service-renegotiation`
+revelou dois bugs distintos, ambos corrigidos e verificados ao vivo no mesmo dia:
+
+### 4. Resolução de `ContractSelectionPending` dependia de uma ação que o agente não tomava naturalmente
+
+O caminho de resolução em `_contracts_milestone` (agent-runtime-renegotiation) já existia e já
+funcionava - mas só quando o agente re-chamava `consultar_contratos` no mesmo turno em que o cliente
+nomeava um contrato. Em todos os testes *roteirizados* desta rodada, a mensagem sempre reafirmava o
+contrato explicitamente, então o agente fazia essa chamada naturalmente. Um cliente real respondendo
+apenas `"2"` não levava o agente a re-consultar contratos - ele tentava `consultar_debitos`/
+`validar_elegibilidade` diretamente, que ficavam bloqueados pelo estágio (ainda
+`ContractSelectionPending`) indefinidamente, turno após turno.
+
+**Correção**: regra explícita adicionada ao system prompt (`app/agent/prompts.py`) instruindo o
+agente a sempre re-chamar `consultar_contratos` no turno em que o cliente nomeia um contrato, antes
+de qualquer chamada de débitos/elegibilidade. Reproduzido ao vivo o turno exato do cliente real
+(`e2e-real-repro`, conversa nova, mesma sequência: CPF → "quais contratos?" → **"2"**): antes da
+correção, ficava preso em `ContractSelectionPending`; depois, avança para `ContractSelected` no
+turno seguinte à resposta curta.
+
+### 5. `core-bancario-mock` fabricava dados plausíveis para um CPF truncado
+
+Ao verificar a correção acima, a re-consulta de contratos às vezes usava um `client_id` truncado
+(`"2222"` em vez de `"22222222222"`) - o achado #3 da rodada anterior, agora com impacto real
+confirmado: `core-bancario-mock` retornava **200 OK com um contrato fabricado** (cartão de crédito,
+R$ 1.800,00 - visualmente plausível, mas não é o saldo real do cliente, R$ 3.200,00) em vez de erro,
+porque qualquer identificador não reconhecido caía no gerador genérico de dados mock, sem validação
+de formato.
+
+**Correção**: `core-bancario-mock/Program.cs` agora valida que a porção CPF de qualquer identificador
+(`clients/{cpf}`, `.../contracts`, `.../debts`, `.../eligibility`, `.../simulations`) tem exatamente
+11 dígitos numéricos antes de gerar dados genéricos ou consultar o cenário reservado - caso
+contrário, `404`. CPFs válidos mas não-reservados continuam funcionando exatamente como antes (dado
+genérico plausível), só identificadores malformados passam a ser rejeitados. Reproduzido ao vivo em
+`e2e-real-repro2` (conversa nova, sequência idêntica): antes da correção, `active_contract_id`
+silenciosamente virava `2222-contract-2` com dados fabricados; depois, o identificador malformado
+falha (`404`), o agente usa o CPF completo corretamente, e `active_contract_id` fica
+`22222222222-contract-2` com débitos reais (R$ 900,00/R$ 500,00, batendo com
+`ScenarioFixtures.ByCpf["22222222222"]`).
 
 ## Não verificado nesta rodada
 
